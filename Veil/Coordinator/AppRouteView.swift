@@ -24,12 +24,14 @@ struct AppRootView: View {
     @StateObject private var coordinator = AppCoordinator()
     @StateObject private var environment = AppEnvironment()
     @StateObject private var trustCenter: TrustCenter
+    @StateObject private var auth: AuthStore
     
     init() {
         let coordinator = AppCoordinator()
         _coordinator = StateObject(wrappedValue: coordinator)
         _trustCenter = StateObject(wrappedValue: TrustCenter(coordinator: coordinator))
         _environment = StateObject(wrappedValue: AppEnvironment())
+        _auth = StateObject(wrappedValue: AuthStore(authRepo: AppEnvironment().authRepo))
     }
     
     var body: some View {
@@ -42,8 +44,23 @@ struct AppRootView: View {
         .environmentObject(coordinator)
         .environmentObject(environment)
         .environmentObject(trustCenter)
+        .environmentObject(auth)
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
+        }
+    }
+    
+    @ViewBuilder
+    private var rootScreen: some View {
+        switch auth.state {
+        case .signedOut:
+            WelcomeView()
+            
+        case .onboarding:
+            UsernameCreationView()
+            
+        case .signedIn:
+            InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
         }
     }
     

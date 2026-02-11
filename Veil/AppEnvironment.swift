@@ -23,6 +23,7 @@ import SwiftUI
 
 final class AppEnvironment: ObservableObject {
 
+    let authRepo: AuthRepository
     let identityRepo: IdentityRepository
     let crypto: CryptoService
     let trustRepo: TrustRepository
@@ -30,10 +31,12 @@ final class AppEnvironment: ObservableObject {
     let requestsRepo: MessageRequestsRepository
 
     init(
+        authRepo: AuthRepository = MockAuthRepository(),
         identityRepo: IdentityRepository = MockIdentityRepository(),
         crypto: CryptoService = MockCryptoService(),
         trustRepo: TrustRepository = MockTrustRepository()
     ) {
+        self.authRepo = authRepo
         self.identityRepo = identityRepo
         self.trustRepo = trustRepo
         self.crypto = crypto
