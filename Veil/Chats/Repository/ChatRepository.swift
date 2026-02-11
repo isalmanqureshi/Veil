@@ -13,6 +13,8 @@ protocol ChatRepository {
     
     // NEW: for inbox
     func listChats() -> [ChatThread]
+   
+    //func ensureChatExists(username: String)
 }
 
 //ChatRepository with deterministic mock data + silent retry
@@ -89,3 +91,9 @@ extension MockChatRepository {
             .sorted(by: { $0.lastAt > $1.lastAt })
     }
 }
+//extension MockChatRepository {
+//    
+//    func ensureChatExists(username: String) {
+//        _ = loadMessages(chatUsername: username)
+//    }
+//}

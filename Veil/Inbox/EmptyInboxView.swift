@@ -8,52 +8,48 @@
 import SwiftUI
 
 struct EmptyInboxView: View {
+
     @EnvironmentObject private var coordinator: AppCoordinator
-    @EnvironmentObject private var env: AppEnvironment
-    
+
     var body: some View {
-        VStack {
-            
+        VStack(spacing: 14) {
             Spacer()
-            
-            VStack(spacing: 16) {
-                Text("No conversations yet")
-                    .font(.system(size: 22, weight: .semibold))
-                
-                Button(action: {
-                    // Start chat
-                    coordinator.push(.startChat)
-                }) {
-                    Text("Start a Chat")
-                        .font(.system(size: 17, weight: .semibold))
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                }
-                .background(Color.primary)
-                .foregroundColor(Color(.systemBackground))
-                .cornerRadius(12)
-                
-                Button(action: {
-                    // Share username
-                    coordinator.push(.status)
-                }) {
-                    Text("Share your username")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
-                }
+
+            Text("No conversations yet")
+                .font(.system(size: 28, weight: .bold))
+
+            Button {
+                coordinator.push(.startChat)
+            } label: {
+                Text("Start a Chat")
+                    .font(.system(size: 17, weight: .semibold))
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
             }
-            
+            .background(Color.primary)
+            .foregroundColor(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Button {
+                coordinator.push(.status)
+            } label: {
+                Text("Share your username")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.blue)
+            }
+            .padding(.top, 6)
+
             Spacer()
         }
-        .navigationTitle("")
+        .padding(.horizontal, 24)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: {
-                    // Settings action
-                }) {
+                Button {
+                    coordinator.push(.privacy) // or settings route
+                } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 17))
+                        .font(.system(size: 18, weight: .semibold))
                 }
             }
         }

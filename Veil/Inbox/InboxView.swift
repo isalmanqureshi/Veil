@@ -8,74 +8,125 @@
 import SwiftUI
 
 struct InboxView: View {
-
+    
     @EnvironmentObject private var coordinator: AppCoordinator
     @StateObject private var vm: InboxViewModel
-
+    
     init(chatRepo: ChatRepository, requestsRepo: MessageRequestsRepository) {
         _vm = StateObject(wrappedValue: InboxViewModel(chatRepo: chatRepo, requestsRepo: requestsRepo))
     }
-
+    
     var body: some View {
         VStack(spacing: 0) {
-
-            Picker("", selection: $vm.selectedTab) {
-                ForEach(InboxViewModel.Tab.allCases, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+            
+            header
+            
+            content
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    coordinator.push(.privacy) // or settings route
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 18, weight: .semibold))
                 }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-
-            if vm.selectedTab == .chats {
-                if vm.chats.isEmpty {
-                    EmptyInboxView()
-                } else {
-                    List(vm.chats) { thread in
-                        Button {
-                            coordinator.push(.chat(username: thread.username))
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(thread.username)
-                                    .font(.system(size: 16, weight: .semibold))
-                                Text(thread.lastPreview)
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .padding(.vertical, 6)
-                        }
-                    }
-                    .listStyle(.plain)
-                }
-            } else {
-                // requests list...
-                List(vm.requests) { req in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(req.fromUsername).font(.system(size: 16, weight: .semibold))
-                        Text(req.previewCiphertext)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-
-                        HStack {
-                            Button("Ignore") { vm.ignore(req) }
-                            Spacer()
-                            Button("Accept") {
-                                let u = vm.accept(req)
-                                coordinator.push(.chat(username: u))
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-                .listStyle(.plain)
+                .accessibilityLabel("Settings")
             }
         }
         .onAppear { vm.reload() }
     }
+    
+    // MARK: - Header
+    
+    private var header: some View {
+        VStack(spacing: 10) {
+            Picker("", selection: $vm.selectedTab) {
+                Text("Chats").tag(InboxViewModel.Tab.chats)
+                Text("Requests").tag(InboxViewModel.Tab.requests)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+        .padding(.bottom, 8)
+    }
+    
+    // MARK: - Content
+    
+    @ViewBuilder
+    private var content: some View {
+        switch vm.selectedTab {
+            
+        case .chats:
+            if vm.chats.isEmpty {
+                EmptyChatsState(
+                    onStartChat: { coordinator.push(.startChat) },
+                    onShareUsername: { coordinator.push(.status) }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(vm.chats) { thread in
+                        Button {
+                            coordinator.push(.chat(username: thread.username))
+                        } label: {
+                            ChatRow(username: thread.username, preview: thread.lastPreview)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .listStyle(.plain)
+                .refreshable { vm.reload() }
+            }
+            
+        case .requests:
+            if vm.requests.isEmpty {
+                EmptyRequestsState()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                
+                List {
+                    ForEach(vm.requests) { req in
+                        Button {
+                            coordinator.push(.requestDetails(id: req.id))
+                        } label: {
+                            RequestRowSummary(request: req)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .listStyle(.plain)
+                .refreshable { vm.reload() }
+
+                
+                //Old code
+//                List {
+//                    ForEach(vm.requests) { req in
+//                        if let label = req.signals.riskLabel {
+//                            Text(label)
+//                              .font(.system(size: 12))
+//                              .foregroundStyle(.secondary)
+//                        }
+//
+//                        RequestRow(
+//                            request: req,
+//                            onIgnore: { vm.ignore(req) },
+//                            onAccept: {
+//                                let u = vm.accept(req)
+//                                coordinator.push(.chat(username: u))
+//                            }
+//                        )
+//                    }
+//                }
+//                .listStyle(.plain)
+//                .refreshable { vm.reload() }
+            }
+        }
+    }
 }
+
 
 
 #Preview {

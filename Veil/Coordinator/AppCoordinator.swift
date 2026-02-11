@@ -26,3 +26,10 @@ final class AppCoordinator: ObservableObject, AppCoordinating {
     }
 }
 
+extension AppCoordinator {
+    func pop() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
+}
+

@@ -17,6 +17,7 @@ enum AppRoute: Hashable {
     case status
     case privacy
     case groupCreation
+    case requestDetails(id: UUID)
     case trustWarning(title: String, message: String)
 }
 
@@ -99,6 +100,9 @@ struct AppRootView: View {
 
         case .groupCreation:
             GroupCreationView()
+            
+        case .requestDetails(let id):
+            RequestDetailsView(requestId: id, chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
 
         case .trustWarning(let title, let message):
             TrustWarningView(title: title, message: message)
