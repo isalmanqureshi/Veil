@@ -1,0 +1,70 @@
+//
+//  ContentView.swift
+//  Veil
+//
+//  Created by Salman Qureshi on 2/5/26.
+//
+
+import SwiftUI
+
+struct WelcomeView: View {
+    @EnvironmentObject private var coordinator: AppCoordinator
+    
+    var body: some View {
+        VStack {
+            Spacer()
+            
+            // Logo
+            Image(systemName: "shield.fill")
+                .font(.system(size: 42))
+                .foregroundStyle(.primary)
+                .padding(.bottom, 24)
+            
+            // Headline
+            Text("Private by default. Invisible by design.")
+                .font(.system(size: 28, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.bottom, 12)
+            
+            // Subtext
+            Text("No phone number. No ads. No tracking.")
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+            
+            Spacer()
+            
+            // Primary CTA
+            Button(action: {
+                // Create account action
+                coordinator.push(.username)
+            }) {
+                Text("Create Account")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            .background(Color.primary)
+            .foregroundColor(Color(.systemBackground))
+            .cornerRadius(12)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
+            
+            // Secondary action
+            Button(action: {
+                // Privacy info action
+            }) {
+                Text("Learn how privacy works")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 24)
+        }
+    }
+}
+
+#Preview {
+    WelcomeView()
+}
