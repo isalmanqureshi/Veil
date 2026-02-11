@@ -14,50 +14,88 @@ struct LoginView: View {
 
     @State private var username = ""
     @State private var recoveryKey = ""
-    @State private var showError = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field {
+        case username
+        case recoveryKey
+    }
+
+    private var normalizedUsername: String {
+        UsernameRules.normalize(username)
+    }
+
+    private var normalizedRecoveryKey: String {
+        recoveryKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSubmit: Bool {
+        UsernameRules.isValid(normalizedUsername) && !normalizedRecoveryKey.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 16) {
-
             TextField("Username", text: $username)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
+                .keyboardType(.asciiCapable)
+                .focused($focusedField, equals: .username)
+                .submitLabel(.next)
+                .onSubmit { focusedField = .recoveryKey }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
 
-            TextField("Recovery key", text: $recoveryKey)
+            SecureField("Recovery key", text: $recoveryKey)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
+                .focused($focusedField, equals: .recoveryKey)
+                .submitLabel(.go)
+                .onSubmit { signIn() }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
 
-            if showError {
-                Text("Couldn’t sign in. Check your username and recovery key.")
+            if let error = auth.loginErrorMessage {
+                Text(error)
                     .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Button("Sign in") {
-                let ok = auth.login(username: username, recoveryKey: recoveryKey)
-                if ok { coordinator.path.removeAll() }
-            }
-            .disabled(username.isEmpty || recoveryKey.isEmpty)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background((username.isEmpty || recoveryKey.isEmpty) ? Color.secondary : Color.primary)
-            .foregroundColor(Color(.systemBackground))
-            .cornerRadius(12)
+            Button("Sign in", action: signIn)
+                .disabled(!canSubmit)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(canSubmit ? Color.primary : Color.secondary)
+                .foregroundColor(Color(.systemBackground))
+                .cornerRadius(12)
 
             Spacer()
         }
         .padding(24)
         .navigationTitle("Sign in")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            focusedField = .username
+        }
+        .onChange(of: username) { newValue in
+            let sanitized = UsernameRules.sanitize(newValue)
+            if sanitized != newValue {
+                username = sanitized
+            }
+        }
+    }
+
+    private func signIn() {
+        guard canSubmit else { return }
+
+        let ok = auth.login(username: normalizedUsername, recoveryKey: normalizedRecoveryKey)
+        if ok {
+            coordinator.path.removeAll()
+        }
     }
 }
-
 
 #Preview {
     LoginView()
