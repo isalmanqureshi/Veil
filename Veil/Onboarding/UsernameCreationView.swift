@@ -78,8 +78,8 @@ struct UsernameCreationView: View {
             // CTA
             Button(action: {
                 // Continue action
-                //TO:DO - On Continue → push recovery key screen. Store the chosen username in the view model or pass it through coordinator route (recommended).
                 auth.onboardingUsername = username
+                auth.prepareRecoveryKeyIfNeeded()
                 coordinator.push(.recoveryKey)
             }) {
                 Text("Continue")
