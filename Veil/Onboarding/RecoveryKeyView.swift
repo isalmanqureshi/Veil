@@ -16,6 +16,7 @@ struct RecoveryKeyView: View {
 
     @State private var isBlurred = true
     @State private var isConfirmed = false
+    @State private var showCopiedHint = false
 
     var body: some View {
         VStack {
@@ -28,21 +29,37 @@ struct RecoveryKeyView: View {
             Text("Your Recovery Key")
                 .font(.system(size: 24, weight: .semibold))
                 .multilineTextAlignment(.center)
-                .padding(.bottom, 20)
+                .padding(.bottom, 8)
+
+            Text("Store this safely. If lost, your account cannot be recovered.")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
 
             VStack(spacing: 16) {
-                Text(recoveryKey)
-                    .font(.system(size: 15, weight: .medium, design: .monospaced))
-                    .multilineTextAlignment(.center)
-                    .blur(radius: isBlurred ? 8 : 0)
-                    .padding()
+                if recoveryKey.isEmpty {
+                    Text("Recovery key unavailable. Go back and try again.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                } else {
+                    Text(recoveryKey)
+                        .font(.system(size: 15, weight: .medium, design: .monospaced))
+                        .multilineTextAlignment(.center)
+                        .blur(radius: isBlurred ? 8 : 0)
+                        .textSelection(.enabled)
+                        .padding()
 
-                Button {
-                    withAnimation { isBlurred.toggle() }
-                } label: {
-                    Text(isBlurred ? "Show recovery key" : "Hide recovery key")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    Button {
+                        withAnimation { isBlurred.toggle() }
+                    } label: {
+                        Text(isBlurred ? "Show recovery key" : "Hide recovery key")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding()
@@ -55,13 +72,24 @@ struct RecoveryKeyView: View {
                     Label("Copy", systemImage: "doc.on.doc")
                         .font(.system(size: 14, weight: .medium))
                 }
-                Button(action: downloadKey) {
-                    Label("Download", systemImage: "arrow.down.doc")
+                .disabled(recoveryKey.isEmpty)
+
+                ShareLink(item: recoveryKey) {
+                    Label("Share", systemImage: "square.and.arrow.up")
                         .font(.system(size: 14, weight: .medium))
                 }
+                .disabled(recoveryKey.isEmpty)
             }
             .foregroundStyle(.primary)
             .padding(.top, 16)
+
+            if showCopiedHint {
+                Text("Recovery key copied.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                    .transition(.opacity)
+            }
 
             CheckboxView(
                 isChecked: $isConfirmed,
@@ -70,35 +98,56 @@ struct RecoveryKeyView: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
 
+            if let errorMessage = auth.onboardingErrorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+            }
+
             Spacer()
 
             Button {
                 auth.finishOnboarding()
-                
-                coordinator.path.removeAll()
+
+                if case .signedIn = auth.state {
+                    coordinator.path.removeAll()
+                }
             } label: {
                 Text("Finish setup")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding()
             }
-            .background(isConfirmed ? Color.primary : Color.secondary)
+            .background((isConfirmed && !recoveryKey.isEmpty) ? Color.primary : Color.secondary)
             .foregroundColor(Color(.systemBackground))
             .cornerRadius(12)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
-            .disabled(!isConfirmed)
+            .disabled(!isConfirmed || recoveryKey.isEmpty)
         }
         .onAppear {
-            // Safety: if user navigated here directly, ensure key exists
             auth.prepareRecoveryKeyIfNeeded()
         }
     }
 
-    private func copyKey() { UIPasteboard.general.string = recoveryKey }
-    private func downloadKey() { /* share sheet later */ }
-}
+    private func copyKey() {
+        guard !recoveryKey.isEmpty else { return }
 
+        UIPasteboard.general.string = recoveryKey
+        withAnimation {
+            showCopiedHint = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation {
+                showCopiedHint = false
+            }
+        }
+    }
+}
 
 #Preview {
     RecoveryKeyView()

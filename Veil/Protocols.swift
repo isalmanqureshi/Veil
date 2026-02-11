@@ -31,8 +31,7 @@ final class MockIdentityRepository: IdentityRepository {
     }
 
     func validateUsername(_ username: String) -> Bool {
-        let regex = #"^[a-z0-9_]{4,24}$"#
-        return username.range(of: regex, options: .regularExpression) != nil
+        UsernameRules.isValid(username)
     }
 }
 
