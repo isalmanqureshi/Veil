@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct WelcomeView: View {
+    
+    @EnvironmentObject private var auth: AuthStore
     @EnvironmentObject private var coordinator: AppCoordinator
     
     var body: some View {
@@ -39,9 +41,25 @@ struct WelcomeView: View {
             // Primary CTA
             Button(action: {
                 // Create account action
-                coordinator.push(.username)
+                auth.startOnboarding()
             }) {
                 Text("Create Account")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            }
+            .background(Color.primary)
+            .foregroundColor(Color(.systemBackground))
+            .cornerRadius(12)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
+            
+            
+            Button(action: {
+                // push login route
+                coordinator.push(.login)
+            }) {
+                Text("Sign in")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding()

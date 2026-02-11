@@ -12,11 +12,6 @@ protocol IdentityRepository {
 }
 
 
-
-//protocol GroupRepository {
-//    func createGroup(name: String) -> Group
-//}
-
 protocol TrustRepository {
     func activeWarnings() -> [TrustWarning]
 }

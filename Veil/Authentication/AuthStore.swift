@@ -11,6 +11,7 @@ import SwiftUI
 final class AuthStore: ObservableObject {
 
     @Published private(set) var state: AuthState = .signedOut
+    @Published var onboardingUsername: String = ""
 
     private let authRepo: AuthRepository
 

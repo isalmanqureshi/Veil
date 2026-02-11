@@ -8,6 +8,7 @@
 import SwiftUI
 
 enum AppRoute: Hashable {
+    case login
     case username
     case recoveryKey
     case inbox
@@ -20,23 +21,27 @@ enum AppRoute: Hashable {
 }
 
 struct AppRootView: View {
-    
-    @StateObject private var coordinator = AppCoordinator()
-    @StateObject private var environment = AppEnvironment()
+
+    @StateObject private var coordinator: AppCoordinator
+    @StateObject private var environment: AppEnvironment
     @StateObject private var trustCenter: TrustCenter
     @StateObject private var auth: AuthStore
-    
+
     init() {
         let coordinator = AppCoordinator()
+        let environment = AppEnvironment()
+        let trustCenter = TrustCenter(coordinator: coordinator)
+        let auth = AuthStore(authRepo: environment.authRepo)
+
         _coordinator = StateObject(wrappedValue: coordinator)
-        _trustCenter = StateObject(wrappedValue: TrustCenter(coordinator: coordinator))
-        _environment = StateObject(wrappedValue: AppEnvironment())
-        _auth = StateObject(wrappedValue: AuthStore(authRepo: AppEnvironment().authRepo))
+        _environment = StateObject(wrappedValue: environment)
+        _trustCenter = StateObject(wrappedValue: trustCenter)
+        _auth = StateObject(wrappedValue: auth)
     }
-    
+
     var body: some View {
         NavigationStack(path: $coordinator.path) {
-            WelcomeView()
+            rootScreen
                 .navigationDestination(for: AppRoute.self) { route in
                     routeView(for: route)
                 }
@@ -49,49 +54,52 @@ struct AppRootView: View {
             ScreenshotDetector.start(trustCenter: trustCenter)
         }
     }
-    
+
     @ViewBuilder
     private var rootScreen: some View {
         switch auth.state {
         case .signedOut:
             WelcomeView()
-            
+
         case .onboarding:
             UsernameCreationView()
-            
+
         case .signedIn:
             InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
         }
     }
-    
+
     @ViewBuilder
     private func routeView(for route: AppRoute) -> some View {
         switch route {
-            
+
+        case .login:
+            LoginView()
+
         case .username:
             UsernameCreationView()
-            
+
         case .recoveryKey:
             RecoveryKeyView()
-            
+
         case .inbox:
             InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
-            
+
         case .startChat:
             StartChatView()
-            
+
         case .chat(let username):
             ChatView(username: username, repo: environment.chatRepo)
-            
+
         case .status:
             StatusView()
-            
+
         case .privacy:
             PrivacyDashboardView()
-            
+
         case .groupCreation:
             GroupCreationView()
-            
+
         case .trustWarning(let title, let message):
             TrustWarningView(title: title, message: message)
         }

@@ -9,9 +9,11 @@ import SwiftUI
 
 struct RecoveryKeyView: View {
     
-    @EnvironmentObject private var coordinator: AppCoordinator
+    @EnvironmentObject private var auth: AuthStore
+       @EnvironmentObject private var coordinator: AppCoordinator
+    
     private let recoveryKey =
-    "lorem-ipsum-dolor-sit-amet\nconsectetur-adipiscing-elit"
+    "lorem-ipsum-dolor-sit-amet-consectetur-adipiscing-elit"
     
     
     @State private var isBlurred = true
@@ -90,10 +92,8 @@ struct RecoveryKeyView: View {
             // CTA
             Button(action: {
                 // Finish setup action
-                coordinator.path = []
-                DispatchQueue.main.async {
-                    coordinator.push(.inbox)
-                }
+                auth.finishOnboarding(username: auth.onboardingUsername)
+                coordinator.path.removeAll()
             }) {
                 Text("Finish setup")
                     .font(.system(size: 17, weight: .semibold))

@@ -10,6 +10,7 @@ import SwiftUI
 struct UsernameCreationView: View {
     @EnvironmentObject private var coordinator: AppCoordinator
     @EnvironmentObject private var env: AppEnvironment
+    @EnvironmentObject private var auth: AuthStore
     
     @State private var username: String = "lorem_ipsum_92"
     
@@ -77,6 +78,8 @@ struct UsernameCreationView: View {
             // CTA
             Button(action: {
                 // Continue action
+                //TO:DO - On Continue → push recovery key screen. Store the chosen username in the view model or pass it through coordinator route (recommended).
+                auth.onboardingUsername = username
                 coordinator.push(.recoveryKey)
             }) {
                 Text("Continue")
