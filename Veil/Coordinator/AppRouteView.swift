@@ -29,14 +29,14 @@ struct AppRootView: View {
 
     init() {
         let coordinator = AppCoordinator()
-        let environment = AppEnvironment()
         let trustCenter = TrustCenter(coordinator: coordinator)
-        let auth = AuthStore(authRepo: environment.authRepo)
 
         _coordinator = StateObject(wrappedValue: coordinator)
-        _environment = StateObject(wrappedValue: environment)
         _trustCenter = StateObject(wrappedValue: trustCenter)
-        _auth = StateObject(wrappedValue: auth)
+        
+        let environment = AppEnvironment()
+        _auth = StateObject(wrappedValue: AuthStore(authRepo: environment.authRepo))
+        _environment = StateObject(wrappedValue: environment)
     }
 
     var body: some View {
