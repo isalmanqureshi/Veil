@@ -41,11 +41,13 @@ struct RequestDetailsView: View {
                 onSubmit: { reason in
                     requestsRepo.report(requestId: requestId, reason: reason)
                     showReportSheet = false
+                    request = nil
 
                     coordinator.push(.trustWarning(
                         title: "Report received",
                         message: "Thanks. This request was removed and will help improve protections."
                     ))
+                    // ✅ Don’t pop here
                 }
             )
         }
@@ -53,6 +55,10 @@ struct RequestDetailsView: View {
 
     private func reload() {
         request = requestsRepo.loadRequests().first(where: { $0.id == requestId })
+    }
+
+    private func acceptTitle(for req: MessageRequestThread) -> String {
+        RequestSignalsFormatter.acceptTitle(req.signals)
     }
 
     private func content(_ req: MessageRequestThread) -> some View {
@@ -83,7 +89,6 @@ struct RequestDetailsView: View {
                     }
                 }
 
-
                 Spacer()
             }
             .padding(.top, 8)
@@ -102,9 +107,10 @@ struct RequestDetailsView: View {
             }
 
             VStack(spacing: 12) {
-                
+
                 Button {
                     let username = requestsRepo.accept(requestId: req.id)
+                    request = nil
                     coordinator.push(.chat(username: username))
                 } label: {
                     Text(acceptTitle(for: req))
@@ -119,6 +125,7 @@ struct RequestDetailsView: View {
                 HStack(spacing: 12) {
                     Button {
                         requestsRepo.ignore(requestId: req.id)
+                        request = nil
                         coordinator.pop()
                     } label: {
                         Text("Ignore")
@@ -130,13 +137,13 @@ struct RequestDetailsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                     Button {
-                        
                         requestsRepo.block(requestId: req.id)
+                        request = nil
                         coordinator.push(.trustWarning(
                             title: "Blocked",
                             message: "This sender can’t request messages from you."
                         ))
-                        coordinator.pop()
+                        // ✅ Don’t pop immediately; let user read it
                     } label: {
                         Text("Block")
                             .font(.system(size: 15, weight: .semibold))
@@ -162,11 +169,8 @@ struct RequestDetailsView: View {
         }
         .padding(16)
     }
-    
-    private func acceptTitle(for req: MessageRequestThread) -> String {
-        RequestSignalsFormatter.acceptTitle(req.signals)
-    }
 }
+
 
 private struct ReportSheet: View {
 
