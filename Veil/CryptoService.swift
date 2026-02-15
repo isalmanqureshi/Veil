@@ -12,14 +12,6 @@ protocol CryptoService {
     func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String
 }
 
-struct EncryptedMessageEnvelope: Codable {
-    let version: Int
-    let recipient: String
-    let nonce: String
-    let ciphertext: String
-    let tag: String
-}
-
 enum CryptoServiceError: Error {
     case invalidChainKey
     case malformedEnvelope
@@ -27,58 +19,79 @@ enum CryptoServiceError: Error {
 }
 
 final class AuthenticatedCryptoService: CryptoService {
+
     func encrypt(plaintext: String, for recipient: String, session: SessionState) throws -> String {
-        guard session.sendingChainKey.count == 32 else {
-            throw CryptoServiceError.invalidChainKey
-        }
-
-        let key = SymmetricKey(data: session.sendingChainKey)
-        let nonce = AES.GCM.Nonce()
+        let key = try deriveMessageKey(for: recipient, session: session)
         let payload = Data(plaintext.utf8)
-        let sealed = try AES.GCM.seal(payload, using: key, nonce: nonce)
+        let sealed = try AES.GCM.seal(payload, using: key)
 
-        let envelope = EncryptedMessageEnvelope(
-            version: 1,
-            recipient: recipient,
-            nonce: Data(nonce).base64EncodedString(),
-            ciphertext: sealed.ciphertext.base64EncodedString(),
-            tag: sealed.tag.base64EncodedString()
-        )
-
-        let encoded = try JSONEncoder().encode(envelope)
-        return encoded.base64EncodedString()
-    }
-
-    func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String {
-        guard let envelopeData = Data(base64Encoded: ciphertext) else {
-            throw CryptoServiceError.malformedEnvelope
-        }
-
-        let envelope = try JSONDecoder().decode(EncryptedMessageEnvelope.self, from: envelopeData)
-        guard envelope.recipient == recipient else {
+        guard let combined = sealed.combined else {
             throw CryptoServiceError.invalidCiphertext
         }
 
-        let nonceData = Data(base64Encoded: envelope.nonce)
-        let encryptedData = Data(base64Encoded: envelope.ciphertext)
-        let tagData = Data(base64Encoded: envelope.tag)
-        guard let nonceData, let encryptedData, let tagData else {
+        return combined.base64EncodedString()
+    }
+
+    func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String {
+        guard let combined = Data(base64Encoded: ciphertext) else {
             throw CryptoServiceError.malformedEnvelope
         }
 
-        let nonce = try AES.GCM.Nonce(data: nonceData)
-        let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: encryptedData, tag: tagData)
+        let box = try AES.GCM.SealedBox(combined: combined)
 
-        // For mock UI we allow opening with either chain key, so sender and receiver previews can render.
-        let candidateKeys = [session.receivingChainKey, session.sendingChainKey].filter { $0.count == 32 }
-        for rawKey in candidateKeys {
-            let key = SymmetricKey(data: rawKey)
+        // Try receiving then sending key for local loopback/development readability.
+        let candidateKeys = try candidateMessageKeys(for: recipient, session: session)
+        for key in candidateKeys {
             if let opened = try? AES.GCM.open(box, using: key), let plaintext = String(data: opened, encoding: .utf8) {
                 return plaintext
             }
         }
 
         throw CryptoServiceError.invalidCiphertext
+    }
+
+    private func deriveMessageKey(for recipient: String, session: SessionState) throws -> SymmetricKey {
+        let seed = session.rootKey.count == 32 ? session.rootKey : session.sendingChainKey
+        guard !seed.isEmpty else {
+            throw CryptoServiceError.invalidChainKey
+        }
+
+        let baseKey = SymmetricKey(data: seed)
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: baseKey,
+            salt: Data("veil.msg.salt.v1".utf8),
+            info: Data("veil.msg.\(recipient)".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    private func candidateMessageKeys(for recipient: String, session: SessionState) throws -> [SymmetricKey] {
+        var keys: [SymmetricKey] = []
+
+        let senderSeed = session.rootKey.count == 32 ? session.rootKey : session.sendingChainKey
+        if !senderSeed.isEmpty {
+            keys.append(
+                HKDF<SHA256>.deriveKey(
+                    inputKeyMaterial: SymmetricKey(data: senderSeed),
+                    salt: Data("veil.msg.salt.v1".utf8),
+                    info: Data("veil.msg.\(recipient)".utf8),
+                    outputByteCount: 32
+                )
+            )
+        }
+
+        if !session.receivingChainKey.isEmpty {
+            keys.append(
+                HKDF<SHA256>.deriveKey(
+                    inputKeyMaterial: SymmetricKey(data: session.receivingChainKey),
+                    salt: Data("veil.msg.salt.v1".utf8),
+                    info: Data("veil.msg.\(recipient)".utf8),
+                    outputByteCount: 32
+                )
+            )
+        }
+
+        return keys
     }
 }
 

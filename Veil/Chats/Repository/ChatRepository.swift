@@ -53,7 +53,7 @@ final class MockChatRepository: ChatRepository {
                 direction: .incoming,
                 ciphertext: "enc(\(chatUsername)):!olleH",
                 plaintextPreview: "Hello!",
-                createdAt: Date().addingTimeInterval(-3600),
+                createdAt: Date(timeIntervalSince1970: 1_738_900_000).addingTimeInterval(-3600),
                 timer: .hour1,
                 state: .sent
             )

@@ -157,3 +157,23 @@ private extension SharedSecret {
 }
 
 
+
+
+extension SessionManager {
+    @discardableResult
+    func debugCryptoRoundTrip(username: String = "debug_peer") -> Bool {
+        do {
+            let remote = KeyManager(service: "veil.keys.remote.debug.\(username)")
+            let seed = Data(SHA256.hash(data: Data("veil.remote.debug.\(username)".utf8)))
+            try remote.bootstrapIdentityIfNeeded(seed: seed)
+            let bundle = try mockRemoteBundle(for: username, kmRemote: remote)
+            let session = try establishSessionAsInitiator(remote: bundle)
+            let crypto = MockCryptoService()
+            let cipher = try crypto.encrypt(plaintext: "hello", for: username, session: session)
+            let plain = try crypto.decrypt(ciphertext: cipher, for: username, session: session)
+            return plain == "hello"
+        } catch {
+            return false
+        }
+    }
+}
