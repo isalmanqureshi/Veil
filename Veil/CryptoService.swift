@@ -7,91 +7,121 @@
 import Foundation
 import CryptoKit
 
+enum ChainKDF {
+    /// Not full Double Ratchet yet; symmetric chain only.
+    static func deriveMessageKey(chainKey: Data, counter: UInt32, context: String) -> Data {
+        let mac = HMAC<SHA256>.authenticationCode(
+            for: Data("msg".utf8) + counter.bigEndianData + Data(context.utf8),
+            using: SymmetricKey(data: chainKey)
+        )
+        return Data(mac)
+    }
+
+    /// Not full Double Ratchet yet; symmetric chain only.
+    static func advanceChainKey(chainKey: Data, counter: UInt32, context: String) -> Data {
+        let mac = HMAC<SHA256>.authenticationCode(
+            for: Data("ck".utf8) + counter.bigEndianData + Data(context.utf8),
+            using: SymmetricKey(data: chainKey)
+        )
+        return Data(mac)
+    }
+}
+
 protocol CryptoService {
-    func encrypt(plaintext: String, for recipient: String, session: SessionState) throws -> String
-    func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String
+    func encrypt(plaintext: String, for recipient: String, session: inout SessionState) throws -> String
+    func decrypt(ciphertext: String, for recipient: String, session: inout SessionState) throws -> String
 }
 
 enum CryptoServiceError: Error {
     case invalidChainKey
     case malformedEnvelope
     case invalidCiphertext
+    case unsupportedVersion
+    case counterOutOfOrder
 }
 
 final class AuthenticatedCryptoService: CryptoService {
 
-    func encrypt(plaintext: String, for recipient: String, session: SessionState) throws -> String {
-        let key = try deriveMessageKey(for: recipient, session: session)
-        let payload = Data(plaintext.utf8)
-        let sealed = try AES.GCM.seal(payload, using: key)
+    private let payloadVersion: UInt8 = 1
 
+    func encrypt(plaintext: String, for recipient: String, session: inout SessionState) throws -> String {
+        guard session.sendingChainKey.count == 32 else {
+            throw CryptoServiceError.invalidChainKey
+        }
+
+        let counter = session.sendCount
+        let context = "veil.v1.send.\(recipient)"
+        let messageKeyData = ChainKDF.deriveMessageKey(
+            chainKey: session.sendingChainKey,
+            counter: counter,
+            context: context
+        )
+
+        let payload = Data(plaintext.utf8)
+        let sealed = try AES.GCM.seal(payload, using: SymmetricKey(data: messageKeyData))
         guard let combined = sealed.combined else {
             throw CryptoServiceError.invalidCiphertext
         }
 
-        return combined.base64EncodedString()
+        var blob = Data([payloadVersion])
+        blob.append(counter.bigEndianData)
+        blob.append(combined)
+
+        session.sendingChainKey = ChainKDF.advanceChainKey(
+            chainKey: session.sendingChainKey,
+            counter: counter,
+            context: context
+        )
+        session.sendCount = counter &+ 1
+
+        return blob.base64EncodedString()
     }
 
-    func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String {
-        guard let combined = Data(base64Encoded: ciphertext) else {
+    func decrypt(ciphertext: String, for recipient: String, session: inout SessionState) throws -> String {
+        guard let blob = Data(base64Encoded: ciphertext), blob.count > 5 else {
             throw CryptoServiceError.malformedEnvelope
         }
 
-        let box = try AES.GCM.SealedBox(combined: combined)
-
-        // Try receiving then sending key for local loopback/development readability.
-        let candidateKeys = try candidateMessageKeys(for: recipient, session: session)
-        for key in candidateKeys {
-            if let opened = try? AES.GCM.open(box, using: key), let plaintext = String(data: opened, encoding: .utf8) {
-                return plaintext
-            }
+        let version = blob[0]
+        guard version == payloadVersion else {
+            throw CryptoServiceError.unsupportedVersion
         }
 
-        throw CryptoServiceError.invalidCiphertext
-    }
+        let counterSlice = blob[1..<5]
+        let counter = counterSlice.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
 
-    private func deriveMessageKey(for recipient: String, session: SessionState) throws -> SymmetricKey {
-        let seed = session.rootKey.count == 32 ? session.rootKey : session.sendingChainKey
-        guard !seed.isEmpty else {
+        // MVP assumes in-order delivery.
+        guard counter == session.recvCount else {
+            throw CryptoServiceError.counterOutOfOrder
+        }
+
+        guard session.receivingChainKey.count == 32 else {
             throw CryptoServiceError.invalidChainKey
         }
 
-        let baseKey = SymmetricKey(data: seed)
-        return HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: baseKey,
-            salt: Data("veil.msg.salt.v1".utf8),
-            info: Data("veil.msg.\(recipient)".utf8),
-            outputByteCount: 32
+        let context = "veil.v1.recv.\(recipient)"
+        let messageKeyData = ChainKDF.deriveMessageKey(
+            chainKey: session.receivingChainKey,
+            counter: counter,
+            context: context
         )
-    }
 
-    private func candidateMessageKeys(for recipient: String, session: SessionState) throws -> [SymmetricKey] {
-        var keys: [SymmetricKey] = []
+        let combined = blob.subdata(in: 5..<blob.count)
+        let box = try AES.GCM.SealedBox(combined: combined)
+        let opened = try AES.GCM.open(box, using: SymmetricKey(data: messageKeyData))
 
-        let senderSeed = session.rootKey.count == 32 ? session.rootKey : session.sendingChainKey
-        if !senderSeed.isEmpty {
-            keys.append(
-                HKDF<SHA256>.deriveKey(
-                    inputKeyMaterial: SymmetricKey(data: senderSeed),
-                    salt: Data("veil.msg.salt.v1".utf8),
-                    info: Data("veil.msg.\(recipient)".utf8),
-                    outputByteCount: 32
-                )
-            )
+        guard let plaintext = String(data: opened, encoding: .utf8) else {
+            throw CryptoServiceError.invalidCiphertext
         }
 
-        if !session.receivingChainKey.isEmpty {
-            keys.append(
-                HKDF<SHA256>.deriveKey(
-                    inputKeyMaterial: SymmetricKey(data: session.receivingChainKey),
-                    salt: Data("veil.msg.salt.v1".utf8),
-                    info: Data("veil.msg.\(recipient)".utf8),
-                    outputByteCount: 32
-                )
-            )
-        }
+        session.receivingChainKey = ChainKDF.advanceChainKey(
+            chainKey: session.receivingChainKey,
+            counter: counter,
+            context: context
+        )
+        session.recvCount = counter &+ 1
 
-        return keys
+        return plaintext
     }
 }
 
@@ -124,5 +154,11 @@ final class MockAttachmentService: AttachmentService {
     func upload(_ attachment: AttachmentDraft) async throws -> String {
         try await Task.sleep(nanoseconds: 250_000_000) // 250ms
         return "mock://upload/\(attachment.id.uuidString)"
+    }
+}
+
+private extension UInt32 {
+    var bigEndianData: Data {
+        withUnsafeBytes(of: self.bigEndian) { Data($0) }
     }
 }

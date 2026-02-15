@@ -36,6 +36,8 @@ struct SessionState: Codable, Equatable {
     // Ratchet placeholders (fill in later)
     var sendingChainKey: Data
     var receivingChainKey: Data
+    var sendCount: UInt32 = 0
+    var recvCount: UInt32 = 0
 }
 
 

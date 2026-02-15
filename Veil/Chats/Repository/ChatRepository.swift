@@ -71,9 +71,10 @@ final class MockChatRepository: ChatRepository {
 
         try await Task.sleep(nanoseconds: 200_000_000)
 
-        let session = try ensureSession(for: chatUsername)
-        let ciphertext = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: session)
-        let plaintextPreview = (try? crypto.decrypt(ciphertext: ciphertext, for: chatUsername, session: session)) ?? "Encrypted message"
+        var session = try ensureSession(for: chatUsername)
+        let ciphertext = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
+        sessionManager.saveSession(session)
+        let plaintextPreview = plaintext
         let msg = ChatMessage(
             id: UUID(),
             chatUsername: chatUsername,

@@ -75,7 +75,9 @@ final class SessionManager {
             createdAt: Date(),
             rootKey: rootKey,
             sendingChainKey: ckSend,
-            receivingChainKey: ckRecv
+            receivingChainKey: ckRecv,
+            sendCount: 0,
+            recvCount: 0
         )
 
         store.save(session)
@@ -84,6 +86,10 @@ final class SessionManager {
 
     func session(for username: String) -> SessionState? {
         store.load(username: username)
+    }
+
+    func saveSession(_ session: SessionState) {
+        store.save(session)
     }
 
     // MARK: - Helpers
@@ -156,9 +162,6 @@ private extension SharedSecret {
     var ssData: Data { withUnsafeBytes { Data($0) } }
 }
 
-
-
-
 extension SessionManager {
     @discardableResult
     func debugCryptoRoundTrip(username: String = "debug_peer") -> Bool {
@@ -167,11 +170,43 @@ extension SessionManager {
             let seed = Data(SHA256.hash(data: Data("veil.remote.debug.\(username)".utf8)))
             try remote.bootstrapIdentityIfNeeded(seed: seed)
             let bundle = try mockRemoteBundle(for: username, kmRemote: remote)
-            let session = try establishSessionAsInitiator(remote: bundle)
+            var session = try establishSessionAsInitiator(remote: bundle)
             let crypto = MockCryptoService()
-            let cipher = try crypto.encrypt(plaintext: "hello", for: username, session: session)
-            let plain = try crypto.decrypt(ciphertext: cipher, for: username, session: session)
+            let cipher = try crypto.encrypt(plaintext: "hello", for: username, session: &session)
+            let plain = try crypto.decrypt(ciphertext: cipher, for: username, session: &session)
             return plain == "hello"
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    func debugChainRoundTrip(username: String = "debug_peer_chain") -> Bool {
+        do {
+            let remote = KeyManager(service: "veil.keys.remote.debug.\(username)")
+            let seed = Data(SHA256.hash(data: Data("veil.remote.debug.\(username)".utf8)))
+            try remote.bootstrapIdentityIfNeeded(seed: seed)
+            let bundle = try mockRemoteBundle(for: username, kmRemote: remote)
+            var senderSession = try establishSessionAsInitiator(remote: bundle)
+
+            var receiverSession = senderSession
+            receiverSession.receivingChainKey = senderSession.sendingChainKey
+            receiverSession.recvCount = 0
+
+            let crypto = MockCryptoService()
+            let c1 = try crypto.encrypt(plaintext: "one", for: username, session: &senderSession)
+            let c2 = try crypto.encrypt(plaintext: "two", for: username, session: &senderSession)
+            let c3 = try crypto.encrypt(plaintext: "three", for: username, session: &senderSession)
+
+            let p1 = try crypto.decrypt(ciphertext: c1, for: username, session: &receiverSession)
+            let p2 = try crypto.decrypt(ciphertext: c2, for: username, session: &receiverSession)
+            let p3 = try crypto.decrypt(ciphertext: c3, for: username, session: &receiverSession)
+
+            return p1 == "one"
+                && p2 == "two"
+                && p3 == "three"
+                && senderSession.sendCount == 3
+                && receiverSession.recvCount == 3
         } catch {
             return false
         }
