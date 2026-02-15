@@ -5,6 +5,7 @@
 //  Created by Salman Qureshi on 2/10/26.
 //
 import SwiftUI
+import CryptoKit
 
 //Keep ChatRepository focused on per-chat messages + send
 protocol ChatRepository {
@@ -23,11 +24,19 @@ enum SendError: Error { case transient }
 final class MockChatRepository: ChatRepository {
 
     private let crypto: CryptoService
+    private let localKeyManager: KeyManager
+    private let sessionManager: SessionManager
+    private var remoteKeyManagers: [String: KeyManager] = [:]
     private var store: [String: [ChatMessage]] = [:]
     private var failFirstSendForChat: Set<String> = ["gfhjj"] // deterministic “first send fails”
 
     init(crypto: CryptoService) {
         self.crypto = crypto
+        self.localKeyManager = KeyManager(service: "veil.keys.local.mock")
+        self.sessionManager = SessionManager(keyManager: localKeyManager, store: InMemorySessionStore())
+
+        let localSeed = Data(SHA256.hash(data: Data("veil.local.seed".utf8)))
+        try? localKeyManager.bootstrapIdentityIfNeeded(seed: localSeed)
     }
 
     func loadMessages(chatUsername: String) -> [ChatMessage] {
@@ -58,7 +67,8 @@ final class MockChatRepository: ChatRepository {
 
         try await Task.sleep(nanoseconds: 200_000_000)
 
-        let ciphertext = crypto.encrypt(plaintext: plaintext, for: chatUsername)
+        let session = try ensureSession(for: chatUsername)
+        let ciphertext = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: session)
         let msg = ChatMessage(
             id: UUID(),
             chatUsername: chatUsername,
@@ -70,6 +80,28 @@ final class MockChatRepository: ChatRepository {
         )
         store[chatUsername, default: []].append(msg)
         return msg
+    }
+
+    private func ensureSession(for chatUsername: String) throws -> SessionState {
+        if let existing = sessionManager.session(for: chatUsername) {
+            return existing
+        }
+
+        let remoteManager = try ensureRemoteKeyManager(for: chatUsername)
+        let bundle = try sessionManager.mockRemoteBundle(for: chatUsername, kmRemote: remoteManager)
+        return try sessionManager.establishSessionAsInitiator(remote: bundle)
+    }
+
+    private func ensureRemoteKeyManager(for username: String) throws -> KeyManager {
+        if let existing = remoteKeyManagers[username] {
+            return existing
+        }
+
+        let keyManager = KeyManager(service: "veil.keys.remote.\(username)")
+        let seed = Data(SHA256.hash(data: Data("veil.remote.\(username)".utf8)))
+        try keyManager.bootstrapIdentityIfNeeded(seed: seed)
+        remoteKeyManagers[username] = keyManager
+        return keyManager
     }
 }
 

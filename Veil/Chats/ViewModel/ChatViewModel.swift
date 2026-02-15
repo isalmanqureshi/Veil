@@ -21,6 +21,7 @@ final class ChatViewModel: ObservableObject {
 
     private let chatUsername: String
     private let repo: ChatRepository
+    private var pendingOutgoingPlaintext: [UUID: String] = [:]
 
     init(chatUsername: String, repo: ChatRepository) {
         self.chatUsername = chatUsername
@@ -50,6 +51,7 @@ final class ChatViewModel: ObservableObject {
             state: .sending
         )
         messages.append(local)
+        pendingOutgoingPlaintext[local.id] = text
 
         Task {
             await sendWithSilentRetry(localId: local.id, plaintext: text)
@@ -84,6 +86,7 @@ final class ChatViewModel: ObservableObject {
     private func replace(localId: UUID, with sent: ChatMessage) {
         guard let idx = messages.firstIndex(where: { $0.id == localId }) else { return }
         messages[idx] = sent
+        pendingOutgoingPlaintext.removeValue(forKey: localId)
     }
 
     private func markFailed(localId: UUID) {
@@ -95,12 +98,13 @@ final class ChatViewModel: ObservableObject {
 
     func retryFailed(_ message: ChatMessage) {
         guard message.state == .failed else { return }
+        guard let plaintext = pendingOutgoingPlaintext[message.id] else { return }
         // “Silent retry” on tap; no big banners
         if let idx = messages.firstIndex(where: { $0.id == message.id }) {
             messages[idx].state = .sending
         }
         Task {
-            await sendWithSilentRetry(localId: message.id, plaintext: "(retry)") // replace with stored plaintext in real impl
+            await sendWithSilentRetry(localId: message.id, plaintext: plaintext)
         }
     }
     /**
