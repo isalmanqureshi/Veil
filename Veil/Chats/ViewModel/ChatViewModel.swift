@@ -18,9 +18,12 @@ final class ChatViewModel: ObservableObject {
     @Published var selectedTimer: MessageTimer = .hour1
     @Published var makeDefaultForChat: Bool = false
     @Published var showTimerSelector: Bool = false
+    @Published var isUploadingAttachment: Bool = false
+    @Published var attachmentStatus: String?
 
     private let chatUsername: String
     private let repo: ChatRepository
+    private var pendingOutgoingPlaintext: [UUID: String] = [:]
 
     init(chatUsername: String, repo: ChatRepository) {
         self.chatUsername = chatUsername
@@ -45,11 +48,13 @@ final class ChatViewModel: ObservableObject {
             chatUsername: chatUsername,
             direction: .outgoing,
             ciphertext: "encrypting…",
+            plaintextPreview: text,
             createdAt: Date(),
             timer: selectedTimer,
             state: .sending
         )
         messages.append(local)
+        pendingOutgoingPlaintext[local.id] = text
 
         Task {
             await sendWithSilentRetry(localId: local.id, plaintext: text)
@@ -84,6 +89,7 @@ final class ChatViewModel: ObservableObject {
     private func replace(localId: UUID, with sent: ChatMessage) {
         guard let idx = messages.firstIndex(where: { $0.id == localId }) else { return }
         messages[idx] = sent
+        pendingOutgoingPlaintext.removeValue(forKey: localId)
     }
 
     private func markFailed(localId: UUID) {
@@ -95,12 +101,13 @@ final class ChatViewModel: ObservableObject {
 
     func retryFailed(_ message: ChatMessage) {
         guard message.state == .failed else { return }
+        guard let plaintext = pendingOutgoingPlaintext[message.id] else { return }
         // “Silent retry” on tap; no big banners
         if let idx = messages.firstIndex(where: { $0.id == message.id }) {
             messages[idx].state = .sending
         }
         Task {
-            await sendWithSilentRetry(localId: message.id, plaintext: "(retry)") // replace with stored plaintext in real impl
+            await sendWithSilentRetry(localId: message.id, plaintext: plaintext)
         }
     }
     /**
@@ -118,9 +125,36 @@ final class ChatViewModel: ObservableObject {
      Send message referencing upload id/URL
      */
     func addAttachment(_ attachment: AttachmentDraft, svc: AttachmentService) async {
-        guard attachment.bytes <= svc.maxBytes else { return } // show calm inline note later
+        guard attachment.bytes <= svc.maxBytes else {
+            attachmentStatus = "Attachment exceeds \(svc.maxBytes / (1024 * 1024)) MB limit"
+            return
+        }
+
+        isUploadingAttachment = true
+        attachmentStatus = "Preparing attachment…"
         let stripped = svc.stripMetadata(attachment)
+        attachmentStatus = "Encrypting attachment…"
         let encrypted = svc.encryptForUpload(stripped, recipient: chatUsername)
-        _ = try? await svc.upload(encrypted) // then include reference in message
+
+        do {
+            let uploadRef = try await svc.upload(encrypted)
+            attachmentStatus = "Attachment uploaded securely"
+
+            let attachmentMessage = ChatMessage(
+                id: UUID(),
+                chatUsername: chatUsername,
+                direction: .outgoing,
+                ciphertext: "attachment:\(uploadRef)",
+                plaintextPreview: attachment.fileName,
+                createdAt: Date(),
+                timer: selectedTimer,
+                state: .sent
+            )
+            messages.append(attachmentMessage)
+        } catch {
+            attachmentStatus = "Attachment upload failed"
+        }
+
+        isUploadingAttachment = false
     }
 }

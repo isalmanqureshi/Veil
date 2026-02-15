@@ -26,8 +26,11 @@ final class InboxViewModel: ObservableObject {
     }
 
     func reload() {
-        chats = chatRepo.listChats()
-        requests = requestsRepo.loadRequests()
+        chats = chatRepo.listChats().sorted(by: {
+            if $0.lastAt == $1.lastAt { return $0.username < $1.username }
+            return $0.lastAt > $1.lastAt
+        })
+        requests = requestsRepo.loadRequests().sorted(by: { $0.createdAt > $1.createdAt })
     }
 
     func accept(_ req: MessageRequestThread) -> String {

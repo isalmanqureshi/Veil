@@ -22,32 +22,56 @@ struct MessageBubble: View {
 
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(message.ciphertext) // in real app you'd decrypt for display
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text("Encrypted")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(displayText)
                 .font(.system(size: 15))
+                .foregroundStyle(message.direction == .outgoing ? Color.white : Color.primary)
 
             HStack(spacing: 8) {
                 Text(message.timer.rawValue)
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryTextColor)
 
                 if message.state == .sending {
                     Text("Sending")
                         .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryTextColor)
                 } else if message.state == .failed {
                     Text("Tap to retry")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryTextColor)
                 }
             }
         }
         .padding(12)
-        .background(Color(.secondarySystemBackground))
+        .background(message.direction == .outgoing ? Color.accentColor : Color(.secondarySystemBackground))
         .cornerRadius(14)
+    }
+
+    private var displayText: String {
+        if message.ciphertext.hasPrefix("attachment:") {
+            return "📎 \(message.plaintextPreview)"
+        }
+        if message.ciphertext == "encrypting…" {
+            return "Encrypting message…"
+        }
+        return message.plaintextPreview
+    }
+
+    private var secondaryTextColor: Color {
+        message.direction == .outgoing ? Color.white.opacity(0.85) : .secondary
     }
 }
 
 
 #Preview {
-    MessageBubble(message: ChatMessage(id: UUID.init(), chatUsername: "jbgjhersd", direction: .incoming, ciphertext: "grersg", createdAt: Date.now, timer: .hour1, state: .sending))
+    MessageBubble(message: ChatMessage(id: UUID.init(), chatUsername: "jbgjhersd", direction: .incoming, ciphertext: "grersg", plaintextPreview: "Hello", createdAt: Date.now, timer: .hour1, state: .sending))
 }

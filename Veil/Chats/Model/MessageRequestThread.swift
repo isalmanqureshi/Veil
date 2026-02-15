@@ -51,25 +51,52 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
     
     init(chatRepo: MockChatRepository) {
         self.chatRepo = chatRepo
+        let base = Date(timeIntervalSince1970: 1_738_900_000)
         //You can vary this per sender (e.g., “heavy” for spammy-looking usernames) deterministically.
         self.requests = [
             MessageRequestThread(
                 id: UUID(uuidString: "99999999-8888-7777-6666-555555555555")!,
                 fromUsername: "unknown_veil",
                 previewCiphertext: "enc(you):?olleH",
-                createdAt: Date().addingTimeInterval(-1800),
+                createdAt: base.addingTimeInterval(-1800),
                 signals: RequestSignals(
                     pow: .verified(difficulty: 18),
                     rateLimit: .light,
                     isFirstContact: true,
                     confidenceNote: "New sender • Rate-limited"
                 )
+            ),
+            MessageRequestThread(
+                id: UUID(uuidString: "99999999-8888-7777-6666-555555555556")!,
+                fromUsername: "new_friend",
+                previewCiphertext: "enc(you):!iH",
+                createdAt: base.addingTimeInterval(-900),
+                signals: RequestSignals(
+                    pow: .verified(difficulty: 20),
+                    rateLimit: .none,
+                    isFirstContact: true,
+                    confidenceNote: "First contact"
+                )
+            ),
+            MessageRequestThread(
+                id: UUID(uuidString: "99999999-8888-7777-6666-555555555557")!,
+                fromUsername: "community_mod",
+                previewCiphertext: "enc(you):etadpu ytefaS",
+                createdAt: base.addingTimeInterval(-3000),
+                signals: RequestSignals(
+                    pow: .required(difficulty: 16),
+                    rateLimit: .heavy,
+                    isFirstContact: false,
+                    confidenceNote: "Heavily rate-limited"
+                )
             )
         ]
     }
     
     func loadRequests() -> [MessageRequestThread] {
-        requests.filter { !blockedUsernames.contains($0.fromUsername) }
+        requests
+            .filter { !blockedUsernames.contains($0.fromUsername) }
+            .sorted(by: { $0.createdAt > $1.createdAt })
     }
     
     func accept(requestId: UUID) -> String {
@@ -114,5 +141,4 @@ extension MessageRequestsRepository {
         ignore(requestId: requestId)
     }
 }
-
 
