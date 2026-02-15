@@ -92,6 +92,15 @@ final class SessionManager {
         store.save(session)
     }
 
+    func decryptAndPersist(ciphertext: String, from username: String, crypto: CryptoService = MockCryptoService()) -> String? {
+        guard var session = store.load(username: username) else { return nil }
+        guard let plaintext = try? crypto.decrypt(ciphertext: ciphertext, for: username, session: &session) else {
+            return nil
+        }
+        store.save(session)
+        return plaintext
+    }
+
     // MARK: - Helpers
     
     private func verifySignedPreKey(remote: RemotePreKeyBundle) throws {
@@ -192,21 +201,23 @@ extension SessionManager {
             var receiverSession = senderSession
             receiverSession.receivingChainKey = senderSession.sendingChainKey
             receiverSession.recvCount = 0
+            receiverSession.skippedMessageKeys = []
 
             let crypto = MockCryptoService()
+            let c0 = try crypto.encrypt(plaintext: "zero", for: username, session: &senderSession)
             let c1 = try crypto.encrypt(plaintext: "one", for: username, session: &senderSession)
             let c2 = try crypto.encrypt(plaintext: "two", for: username, session: &senderSession)
-            let c3 = try crypto.encrypt(plaintext: "three", for: username, session: &senderSession)
 
-            let p1 = try crypto.decrypt(ciphertext: c1, for: username, session: &receiverSession)
             let p2 = try crypto.decrypt(ciphertext: c2, for: username, session: &receiverSession)
-            let p3 = try crypto.decrypt(ciphertext: c3, for: username, session: &receiverSession)
+            let p0 = try crypto.decrypt(ciphertext: c0, for: username, session: &receiverSession)
+            let p1 = try crypto.decrypt(ciphertext: c1, for: username, session: &receiverSession)
 
-            return p1 == "one"
-                && p2 == "two"
-                && p3 == "three"
+            return p2 == "two"
+                && p0 == "zero"
+                && p1 == "one"
                 && senderSession.sendCount == 3
                 && receiverSession.recvCount == 3
+                && receiverSession.skippedMessageKeys.isEmpty
         } catch {
             return false
         }

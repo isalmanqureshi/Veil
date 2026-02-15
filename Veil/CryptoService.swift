@@ -43,6 +43,8 @@ enum CryptoServiceError: Error {
 final class AuthenticatedCryptoService: CryptoService {
 
     private let payloadVersion: UInt8 = 1
+    private let outOfOrderWindow: UInt32 = 20
+    private let skippedCapacity: Int = 20
 
     func encrypt(plaintext: String, for recipient: String, session: inout SessionState) throws -> String {
         guard session.sendingChainKey.count == 32 else {
@@ -78,23 +80,48 @@ final class AuthenticatedCryptoService: CryptoService {
     }
 
     func decrypt(ciphertext: String, for recipient: String, session: inout SessionState) throws -> String {
+        let blob = try decodePayload(ciphertext)
+        let counter = parseCounter(blob)
+
+        if counter < session.recvCount {
+            return try decryptLateArrival(blob: blob, counter: counter, recipient: recipient, session: &session)
+        }
+
+        if counter == session.recvCount {
+            return try decryptInOrder(blob: blob, counter: counter, recipient: recipient, session: &session)
+        }
+
+        let gap = counter - session.recvCount
+        guard gap <= outOfOrderWindow else {
+            throw CryptoServiceError.counterOutOfOrder
+        }
+
+        return try decryptWithinWindow(blob: blob, counter: counter, recipient: recipient, session: &session)
+    }
+
+    private func decodePayload(_ ciphertext: String) throws -> Data {
         guard let blob = Data(base64Encoded: ciphertext), blob.count > 5 else {
             throw CryptoServiceError.malformedEnvelope
         }
 
-        let version = blob[0]
-        guard version == payloadVersion else {
+        guard blob[0] == payloadVersion else {
             throw CryptoServiceError.unsupportedVersion
         }
 
+        return blob
+    }
+
+    private func parseCounter(_ blob: Data) -> UInt32 {
         let counterSlice = blob[1..<5]
-        let counter = counterSlice.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        return counterSlice.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+    }
 
-        // MVP assumes in-order delivery.
-        guard counter == session.recvCount else {
-            throw CryptoServiceError.counterOutOfOrder
-        }
-
+    private func decryptInOrder(
+        blob: Data,
+        counter: UInt32,
+        recipient: String,
+        session: inout SessionState
+    ) throws -> String {
         guard session.receivingChainKey.count == 32 else {
             throw CryptoServiceError.invalidChainKey
         }
@@ -106,13 +133,7 @@ final class AuthenticatedCryptoService: CryptoService {
             context: context
         )
 
-        let combined = blob.subdata(in: 5..<blob.count)
-        let box = try AES.GCM.SealedBox(combined: combined)
-        let opened = try AES.GCM.open(box, using: SymmetricKey(data: messageKeyData))
-
-        guard let plaintext = String(data: opened, encoding: .utf8) else {
-            throw CryptoServiceError.invalidCiphertext
-        }
+        let plaintext = try openPayload(blob: blob, messageKeyData: messageKeyData)
 
         session.receivingChainKey = ChainKDF.advanceChainKey(
             chainKey: session.receivingChainKey,
@@ -120,6 +141,80 @@ final class AuthenticatedCryptoService: CryptoService {
             context: context
         )
         session.recvCount = counter &+ 1
+        session.trimSkippedKeys(capacity: skippedCapacity)
+
+        return plaintext
+    }
+
+    private func decryptWithinWindow(
+        blob: Data,
+        counter: UInt32,
+        recipient: String,
+        session: inout SessionState
+    ) throws -> String {
+        guard session.receivingChainKey.count == 32 else {
+            throw CryptoServiceError.invalidChainKey
+        }
+
+        let context = "veil.v1.recv.\(recipient)"
+        let start = session.recvCount
+        var trialChainKey = session.receivingChainKey
+        var stagedSkipped = session.skippedMessageKeys
+        var targetMessageKey: Data?
+
+        for i in start...counter {
+            let msgKey = ChainKDF.deriveMessageKey(chainKey: trialChainKey, counter: i, context: context)
+            let nextKey = ChainKDF.advanceChainKey(chainKey: trialChainKey, counter: i, context: context)
+
+            if i == counter {
+                targetMessageKey = msgKey
+            } else {
+                stagedSkipped.removeAll(where: { $0.counter == i })
+                stagedSkipped.append(SkippedKey(counter: i, key: msgKey))
+            }
+
+            trialChainKey = nextKey
+        }
+
+        guard let targetMessageKey else {
+            throw CryptoServiceError.invalidCiphertext
+        }
+
+        let plaintext = try openPayload(blob: blob, messageKeyData: targetMessageKey)
+
+        session.receivingChainKey = trialChainKey
+        session.recvCount = counter &+ 1
+        session.skippedMessageKeys = stagedSkipped.sorted(by: { $0.counter < $1.counter })
+        session.trimSkippedKeys(capacity: skippedCapacity)
+
+        return plaintext
+    }
+
+    private func decryptLateArrival(
+        blob: Data,
+        counter: UInt32,
+        recipient: String,
+        session: inout SessionState
+    ) throws -> String {
+        _ = recipient
+        guard let cached = session.skippedKey(for: counter) else {
+            throw CryptoServiceError.counterOutOfOrder
+        }
+
+        let plaintext = try openPayload(blob: blob, messageKeyData: cached)
+        session.removeSkippedKey(for: counter)
+        session.trimSkippedKeys(capacity: skippedCapacity)
+        return plaintext
+    }
+
+    private func openPayload(blob: Data, messageKeyData: Data) throws -> String {
+        let combined = blob.subdata(in: 5..<blob.count)
+        let box = try AES.GCM.SealedBox(combined: combined)
+        let opened = try AES.GCM.open(box, using: SymmetricKey(data: messageKeyData))
+
+        guard let plaintext = String(data: opened, encoding: .utf8) else {
+            throw CryptoServiceError.invalidCiphertext
+        }
 
         return plaintext
     }
