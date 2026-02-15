@@ -58,12 +58,12 @@ struct MessageBubble: View {
 
     private var displayText: String {
         if message.ciphertext.hasPrefix("attachment:") {
-            return "📎 Attachment"
+            return "📎 \(message.plaintextPreview)"
         }
         if message.ciphertext == "encrypting…" {
             return "Encrypting message…"
         }
-        return "Encrypted message"
+        return message.plaintextPreview
     }
 
     private var secondaryTextColor: Color {
@@ -73,5 +73,5 @@ struct MessageBubble: View {
 
 
 #Preview {
-    MessageBubble(message: ChatMessage(id: UUID.init(), chatUsername: "jbgjhersd", direction: .incoming, ciphertext: "grersg", createdAt: Date.now, timer: .hour1, state: .sending))
+    MessageBubble(message: ChatMessage(id: UUID.init(), chatUsername: "jbgjhersd", direction: .incoming, ciphertext: "grersg", plaintextPreview: "Hello", createdAt: Date.now, timer: .hour1, state: .sending))
 }

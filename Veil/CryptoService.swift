@@ -9,6 +9,7 @@ import CryptoKit
 
 protocol CryptoService {
     func encrypt(plaintext: String, for recipient: String, session: SessionState) throws -> String
+    func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String
 }
 
 struct EncryptedMessageEnvelope: Codable {
@@ -21,7 +22,8 @@ struct EncryptedMessageEnvelope: Codable {
 
 enum CryptoServiceError: Error {
     case invalidChainKey
-    case encodeFailure
+    case malformedEnvelope
+    case invalidCiphertext
 }
 
 final class AuthenticatedCryptoService: CryptoService {
@@ -45,6 +47,38 @@ final class AuthenticatedCryptoService: CryptoService {
 
         let encoded = try JSONEncoder().encode(envelope)
         return encoded.base64EncodedString()
+    }
+
+    func decrypt(ciphertext: String, for recipient: String, session: SessionState) throws -> String {
+        guard let envelopeData = Data(base64Encoded: ciphertext) else {
+            throw CryptoServiceError.malformedEnvelope
+        }
+
+        let envelope = try JSONDecoder().decode(EncryptedMessageEnvelope.self, from: envelopeData)
+        guard envelope.recipient == recipient else {
+            throw CryptoServiceError.invalidCiphertext
+        }
+
+        let nonceData = Data(base64Encoded: envelope.nonce)
+        let encryptedData = Data(base64Encoded: envelope.ciphertext)
+        let tagData = Data(base64Encoded: envelope.tag)
+        guard let nonceData, let encryptedData, let tagData else {
+            throw CryptoServiceError.malformedEnvelope
+        }
+
+        let nonce = try AES.GCM.Nonce(data: nonceData)
+        let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: encryptedData, tag: tagData)
+
+        // For mock UI we allow opening with either chain key, so sender and receiver previews can render.
+        let candidateKeys = [session.receivingChainKey, session.sendingChainKey].filter { $0.count == 32 }
+        for rawKey in candidateKeys {
+            let key = SymmetricKey(data: rawKey)
+            if let opened = try? AES.GCM.open(box, using: key), let plaintext = String(data: opened, encoding: .utf8) {
+                return plaintext
+            }
+        }
+
+        throw CryptoServiceError.invalidCiphertext
     }
 }
 

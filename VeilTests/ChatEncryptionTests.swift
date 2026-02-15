@@ -28,6 +28,9 @@ final class ChatEncryptionTests: XCTestCase {
         XCTAssertFalse(envelope.ciphertext.isEmpty)
         XCTAssertFalse(envelope.tag.isEmpty)
         XCTAssertFalse(envelope.nonce.isEmpty)
+
+        let decrypted = try crypto.decrypt(ciphertext: sealed, for: "alice", session: session)
+        XCTAssertEqual(decrypted, plaintext)
     }
 
     @MainActor
@@ -74,6 +77,7 @@ private final class RetryAwareChatRepository: ChatRepository {
             chatUsername: chatUsername,
             direction: .outgoing,
             ciphertext: "cipher",
+            plaintextPreview: plaintext,
             createdAt: Date(),
             timer: timer,
             state: .sent

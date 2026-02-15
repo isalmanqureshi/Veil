@@ -48,6 +48,7 @@ final class ChatViewModel: ObservableObject {
             chatUsername: chatUsername,
             direction: .outgoing,
             ciphertext: "encrypting…",
+            plaintextPreview: text,
             createdAt: Date(),
             timer: selectedTimer,
             state: .sending
@@ -144,6 +145,7 @@ final class ChatViewModel: ObservableObject {
                 chatUsername: chatUsername,
                 direction: .outgoing,
                 ciphertext: "attachment:\(uploadRef)",
+                plaintextPreview: attachment.fileName,
                 createdAt: Date(),
                 timer: selectedTimer,
                 state: .sent

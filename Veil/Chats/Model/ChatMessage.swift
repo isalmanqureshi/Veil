@@ -14,6 +14,7 @@ struct ChatMessage: Identifiable, Equatable {
     let chatUsername: String
     let direction: Direction
     let ciphertext: String          // store ciphertext (mock)
+    let plaintextPreview: String
     let createdAt: Date
     let timer: MessageTimer
     var state: SendState

@@ -49,6 +49,7 @@ final class MockChatRepository: ChatRepository {
                 chatUsername: chatUsername,
                 direction: .incoming,
                 ciphertext: "enc(\(chatUsername)):!olleH",
+                plaintextPreview: "Hello!",
                 createdAt: Date().addingTimeInterval(-3600),
                 timer: .hour1,
                 state: .sent
@@ -69,11 +70,13 @@ final class MockChatRepository: ChatRepository {
 
         let session = try ensureSession(for: chatUsername)
         let ciphertext = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: session)
+        let plaintextPreview = (try? crypto.decrypt(ciphertext: ciphertext, for: chatUsername, session: session)) ?? "Encrypted message"
         let msg = ChatMessage(
             id: UUID(),
             chatUsername: chatUsername,
             direction: .outgoing,
             ciphertext: ciphertext,
+            plaintextPreview: plaintextPreview,
             createdAt: Date(),
             timer: timer,
             state: .sent
@@ -116,7 +119,7 @@ extension MockChatRepository {
                 return ChatThread(
                     id: UUID(),               // fine for mock
                     username: username,
-                    lastPreview: last.ciphertext,
+                    lastPreview: last.plaintextPreview,
                     lastAt: last.createdAt
                 )
             }
