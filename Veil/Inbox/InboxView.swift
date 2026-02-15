@@ -61,11 +61,14 @@ struct InboxView: View {
             
         case .chats:
             if vm.chats.isEmpty {
-                EmptyChatsState(
-                    onStartChat: { coordinator.push(.startChat) },
-                    onShareUsername: { coordinator.push(.status) }
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView {
+                    EmptyChatsState(
+                        onStartChat: { coordinator.push(.startChat) },
+                        onShareUsername: { coordinator.push(.status) }
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 420)
+                }
+                .refreshable { vm.reload() }
             } else {
                 List {
                     ForEach(vm.chats) { thread in
@@ -83,8 +86,11 @@ struct InboxView: View {
             
         case .requests:
             if vm.requests.isEmpty {
-                EmptyRequestsState()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView {
+                    EmptyRequestsState()
+                        .frame(maxWidth: .infinity, minHeight: 420)
+                }
+                .refreshable { vm.reload() }
             } else {
                 
                 List {

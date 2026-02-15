@@ -3,6 +3,19 @@ import XCTest
 
 final class ChatEncryptionTests: XCTestCase {
 
+    func testMockInboxDataIsDeterministicAndPopulated() {
+        let chatRepo = MockChatRepository(crypto: MockCryptoService())
+        let requestRepo = MockMessageRequestsRepository(chatRepo: chatRepo)
+
+        let chats = chatRepo.listChats()
+        let requests = requestRepo.loadRequests()
+
+        XCTAssertEqual(chats.count, 4)
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(chats.map(\.username), ["maya", "aiden", "unknown_veil", "studio_ops"])
+        XCTAssertEqual(requests.map(\.fromUsername), ["new_friend", "unknown_veil", "community_mod"])
+    }
+
     func testAuthenticatedCryptoServiceProducesEnvelopeWithoutPlaintextLeak() throws {
         let crypto = AuthenticatedCryptoService()
         let session = SessionState(
