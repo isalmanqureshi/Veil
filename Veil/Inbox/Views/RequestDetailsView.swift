@@ -180,37 +180,38 @@ private struct ReportSheet: View {
     @State private var reason: String = ""
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Text("Tell us what happened")
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                TextField("Reason (optional)", text: $reason, axis: .vertical)
-                    .lineLimit(3...6)
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                Text("Reports are used to improve protections. No panic language, just signal.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
+        VStack(spacing: 16) {
+            HStack {
+                Button("Cancel", action: onCancel)
                 Spacer()
-            }
-            .padding(16)
-            .navigationTitle("Report")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Submit") { onSubmit(reason.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                Button("Submit") {
+                    onSubmit(reason.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
             }
+
+            Text("Report")
+                .font(.system(size: 20, weight: .semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Tell us what happened")
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField("Reason (optional)", text: $reason, axis: .vertical)
+                .lineLimit(3...6)
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Text("Reports are used to improve protections. No panic language, just signal.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
         }
+        .padding(16)
     }
 }
 

@@ -7,8 +7,6 @@
 
 import Foundation
 
-import Foundation
-
 struct RemotePreKeyBundle {
     let username: String
 
@@ -26,6 +24,11 @@ struct RemotePreKeyBundle {
     let oneTimePreKeyPublicKey: Data?
 }
 
+struct SkippedKey: Codable, Equatable {
+    let counter: UInt32
+    let key: Data
+}
+
 struct SessionState: Codable, Equatable {
     let username: String
     let createdAt: Date
@@ -36,8 +39,32 @@ struct SessionState: Codable, Equatable {
     // Ratchet placeholders (fill in later)
     var sendingChainKey: Data
     var receivingChainKey: Data
+    var sendCount: UInt32 = 0
+    var recvCount: UInt32 = 0
+    var skippedMessageKeys: [SkippedKey] = []
 }
 
+extension SessionState {
+    func skippedKey(for counter: UInt32) -> Data? {
+        skippedMessageKeys.first(where: { $0.counter == counter })?.key
+    }
+
+    mutating func upsertSkippedKey(counter: UInt32, key: Data, capacity: Int) {
+        skippedMessageKeys.removeAll(where: { $0.counter == counter })
+        skippedMessageKeys.append(SkippedKey(counter: counter, key: key))
+        skippedMessageKeys.sort { $0.counter < $1.counter }
+        trimSkippedKeys(capacity: capacity)
+    }
+
+    mutating func removeSkippedKey(for counter: UInt32) {
+        skippedMessageKeys.removeAll(where: { $0.counter == counter })
+    }
+
+    mutating func trimSkippedKeys(capacity: Int) {
+        guard skippedMessageKeys.count > capacity else { return }
+        skippedMessageKeys = Array(skippedMessageKeys.suffix(capacity))
+    }
+}
 
 protocol SessionStore {
     func load(username: String) -> SessionState?

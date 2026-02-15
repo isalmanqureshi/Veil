@@ -11,6 +11,8 @@ enum TrustEventType: Hashable {
     case newDeviceDetected
     case identityKeyChanged
     case unverifiedContact
+    case requestBlocked
+    case requestReported
 }
 
 struct TrustEvent: Identifiable, Hashable {
@@ -31,6 +33,7 @@ struct TrustEvent: Identifiable, Hashable {
 
 struct TrustState {
     var activeEvents: [TrustEvent] = []
+    var eventLog: [TrustEvent] = []
     var lastReviewedAt: Date?
 }
 
@@ -47,9 +50,14 @@ final class TrustCenter: ObservableObject {
 
     // MARK: Public API
 
-    func record(_ event: TrustEvent) {
+    func log(event: TrustEvent) {
+        state.eventLog.append(event)
         state.activeEvents.append(event)
         routeIfNeeded(event)
+    }
+
+    func record(_ event: TrustEvent) {
+        log(event: event)
     }
 
     func dismiss(_ event: TrustEvent) {
@@ -59,6 +67,10 @@ final class TrustCenter: ObservableObject {
 
     func hasCriticalIssues() -> Bool {
         state.activeEvents.contains { $0.severity == .critical }
+    }
+
+    func eventCount(for type: TrustEventType) -> Int {
+        state.eventLog.filter { $0.type == type }.count
     }
 }
 
@@ -75,4 +87,3 @@ private extension TrustCenter {
         )
     }
 }
-
