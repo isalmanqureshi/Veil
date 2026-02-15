@@ -119,7 +119,7 @@ struct ChatView: View {
 private struct ChatComposerView: View {
 
     @ObservedObject var vm: ChatViewModel
-    @Binding var isFocused: Bool
+    var isFocused: FocusState<Bool>.Binding
     @Binding var showAttachmentOptions: Bool
     @Binding var isRecording: Bool
 
@@ -165,7 +165,7 @@ private struct ChatComposerView: View {
                     .padding(12)
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .focused($isFocused)
+                    .focused(isFocused)
                     .submitLabel(.send)
                     .onSubmit(onSend)
 
