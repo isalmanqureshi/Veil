@@ -54,6 +54,9 @@ struct AppRootView: View {
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
         }
+        .onChange(of: auth.state) { _, _ in
+            coordinator.path.removeAll()
+        }
     }
 
     @ViewBuilder

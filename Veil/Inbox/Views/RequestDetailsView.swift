@@ -111,6 +111,12 @@ struct RequestDetailsView: View {
                 Button {
                     let username = requestsRepo.accept(requestId: req.id)
                     request = nil
+
+                    guard !username.isEmpty else {
+                        coordinator.pop()
+                        return
+                    }
+
                     coordinator.push(.chat(username: username))
                 } label: {
                     Text(acceptTitle(for: req))

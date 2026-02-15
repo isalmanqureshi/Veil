@@ -6,6 +6,10 @@
 //
 import SwiftUI
 
+private func stableUUID(_ rawValue: String) -> UUID {
+    UUID(uuidString: rawValue) ?? UUID()
+}
+
 protocol IdentityRepository {
     func currentUser() -> UserIdentity
     func validateUsername(_ username: String) -> Bool
@@ -20,7 +24,7 @@ protocol TrustRepository {
 final class MockIdentityRepository: IdentityRepository {
 
     private let mockUser = UserIdentity(
-        id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
+        id: stableUUID("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"),
         username: "lorem_user",
         recoveryKey: "lorem-ipsum-dolor-sit-amet",
         isVerified: false

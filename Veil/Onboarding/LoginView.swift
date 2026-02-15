@@ -98,5 +98,10 @@ struct LoginView: View {
 }
 
 #Preview {
-    LoginView()
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
+
+    return LoginView()
+        .environmentObject(coordinator)
+        .environmentObject(AuthStore(authRepo: environment.authRepo))
 }

@@ -90,4 +90,5 @@ struct OptionRow: View {
 
 #Preview {
     StartChatView()
+        .environmentObject(AppCoordinator())
 }

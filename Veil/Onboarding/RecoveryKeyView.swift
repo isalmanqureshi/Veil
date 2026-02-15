@@ -150,5 +150,14 @@ struct RecoveryKeyView: View {
 }
 
 #Preview {
-    RecoveryKeyView()
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
+    let auth = AuthStore(authRepo: environment.authRepo)
+    auth.startOnboarding()
+    auth.onboardingUsername = "preview_user"
+    auth.prepareRecoveryKeyIfNeeded()
+
+    return RecoveryKeyView()
+        .environmentObject(coordinator)
+        .environmentObject(auth)
 }

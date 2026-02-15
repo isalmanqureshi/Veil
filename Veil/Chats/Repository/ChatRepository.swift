@@ -7,6 +7,11 @@
 import SwiftUI
 import CryptoKit
 
+private func stableUUID(_ rawValue: String) -> UUID {
+    UUID(uuidString: rawValue) ?? UUID()
+}
+
+
 //Keep ChatRepository focused on per-chat messages + send
 protocol ChatRepository {
     func loadMessages(chatUsername: String) -> [ChatMessage]
@@ -48,7 +53,7 @@ final class MockChatRepository: ChatRepository {
         // Deterministic seed messages
         let seeded: [ChatMessage] = [
             ChatMessage(
-                id: UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
+                id: stableUUID("11111111-2222-3333-4444-555555555555"),
                 chatUsername: chatUsername,
                 direction: .incoming,
                 ciphertext: "enc(\(chatUsername)):!olleH",
@@ -138,7 +143,7 @@ final class MockChatRepository: ChatRepository {
         store = [
             "unknown_veil": [
                 ChatMessage(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000111")!,
+                    id: stableUUID("00000000-0000-0000-0000-000000000111"),
                     chatUsername: "unknown_veil",
                     direction: .incoming,
                     ciphertext: "seed",
@@ -150,7 +155,7 @@ final class MockChatRepository: ChatRepository {
             ],
             "maya": [
                 ChatMessage(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000112")!,
+                    id: stableUUID("00000000-0000-0000-0000-000000000112"),
                     chatUsername: "maya",
                     direction: .incoming,
                     ciphertext: "seed",
@@ -162,7 +167,7 @@ final class MockChatRepository: ChatRepository {
             ],
             "aiden": [
                 ChatMessage(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000113")!,
+                    id: stableUUID("00000000-0000-0000-0000-000000000113"),
                     chatUsername: "aiden",
                     direction: .outgoing,
                     ciphertext: "seed",
@@ -174,7 +179,7 @@ final class MockChatRepository: ChatRepository {
             ],
             "studio_ops": [
                 ChatMessage(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000114")!,
+                    id: stableUUID("00000000-0000-0000-0000-000000000114"),
                     chatUsername: "studio_ops",
                     direction: .incoming,
                     ciphertext: "seed",
@@ -187,10 +192,10 @@ final class MockChatRepository: ChatRepository {
         ]
 
         threadIdByUsername = [
-            "unknown_veil": UUID(uuidString: "10000000-0000-0000-0000-000000000001")!,
-            "maya": UUID(uuidString: "10000000-0000-0000-0000-000000000002")!,
-            "aiden": UUID(uuidString: "10000000-0000-0000-0000-000000000003")!,
-            "studio_ops": UUID(uuidString: "10000000-0000-0000-0000-000000000004")!
+            "unknown_veil": stableUUID("10000000-0000-0000-0000-000000000001"),
+            "maya": stableUUID("10000000-0000-0000-0000-000000000002"),
+            "aiden": stableUUID("10000000-0000-0000-0000-000000000003"),
+            "studio_ops": stableUUID("10000000-0000-0000-0000-000000000004")
         ]
     }
 }

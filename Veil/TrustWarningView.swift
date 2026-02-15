@@ -37,5 +37,8 @@ struct TrustWarningView: View {
 
 
 #Preview {
-    TrustWarningView(title: "Shield", message: "This is to put trust")
+    let coordinator = AppCoordinator()
+
+    return TrustWarningView(title: "Shield", message: "This is to put trust")
+        .environmentObject(TrustCenter(coordinator: coordinator))
 }

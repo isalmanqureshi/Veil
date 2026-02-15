@@ -6,6 +6,11 @@
 //
 import Foundation
 
+private func stableUUID(_ rawValue: String) -> UUID {
+    UUID(uuidString: rawValue) ?? UUID()
+}
+
+
 struct RequestSignals: Equatable {
     enum ProofOfWork: Equatable {
         case none
@@ -55,7 +60,7 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
         //You can vary this per sender (e.g., “heavy” for spammy-looking usernames) deterministically.
         self.requests = [
             MessageRequestThread(
-                id: UUID(uuidString: "99999999-8888-7777-6666-555555555555")!,
+                id: stableUUID("99999999-8888-7777-6666-555555555555"),
                 fromUsername: "unknown_veil",
                 previewCiphertext: "enc(you):?olleH",
                 createdAt: base.addingTimeInterval(-1800),
@@ -67,7 +72,7 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
                 )
             ),
             MessageRequestThread(
-                id: UUID(uuidString: "99999999-8888-7777-6666-555555555556")!,
+                id: stableUUID("99999999-8888-7777-6666-555555555556"),
                 fromUsername: "new_friend",
                 previewCiphertext: "enc(you):!iH",
                 createdAt: base.addingTimeInterval(-900),
@@ -79,7 +84,7 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
                 )
             ),
             MessageRequestThread(
-                id: UUID(uuidString: "99999999-8888-7777-6666-555555555557")!,
+                id: stableUUID("99999999-8888-7777-6666-555555555557"),
                 fromUsername: "community_mod",
                 previewCiphertext: "enc(you):etadpu ytefaS",
                 createdAt: base.addingTimeInterval(-3000),

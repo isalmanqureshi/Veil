@@ -79,5 +79,10 @@ struct WelcomeView: View {
 }
 
 #Preview {
-    WelcomeView()
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
+
+    return WelcomeView()
+        .environmentObject(coordinator)
+        .environmentObject(AuthStore(authRepo: environment.authRepo))
 }

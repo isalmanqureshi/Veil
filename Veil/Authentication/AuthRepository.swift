@@ -24,8 +24,7 @@ final class MockAuthRepository: AuthRepository {
 
     func loadCurrentUser() -> UserIdentity? {
         guard let username = UserDefaults.standard.string(forKey: keyUser) else { return nil }
-        guard let seed = try? keychain.load(service: service, account: accountSeed) else { return nil }
-        guard seed != nil else { return nil }
+        guard let seed = try? keychain.load(service: service, account: accountSeed), seed != nil else { return nil }
 
         // We don't store recoveryKey; user must keep it. For MVP we can derive display key again if needed.
         return UserIdentity(id: UUID(), username: username, recoveryKey: "stored-on-device", isVerified: false)
@@ -33,7 +32,9 @@ final class MockAuthRepository: AuthRepository {
 
     func prepareRecoveryKey() -> (recoveryKey: String, seed: Data) {
         let key = RecoveryKeyGenerator.generate()
-        let seed = (try? RecoveryKeyGenerator.decode(key)) ?? Data()
+        guard let seed = try? RecoveryKeyGenerator.decode(key) else {
+            return (key, Data())
+        }
         return (key, seed)
     }
 
