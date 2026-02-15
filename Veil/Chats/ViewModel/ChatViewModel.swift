@@ -18,6 +18,8 @@ final class ChatViewModel: ObservableObject {
     @Published var selectedTimer: MessageTimer = .hour1
     @Published var makeDefaultForChat: Bool = false
     @Published var showTimerSelector: Bool = false
+    @Published var isUploadingAttachment: Bool = false
+    @Published var attachmentStatus: String?
 
     private let chatUsername: String
     private let repo: ChatRepository
@@ -122,9 +124,35 @@ final class ChatViewModel: ObservableObject {
      Send message referencing upload id/URL
      */
     func addAttachment(_ attachment: AttachmentDraft, svc: AttachmentService) async {
-        guard attachment.bytes <= svc.maxBytes else { return } // show calm inline note later
+        guard attachment.bytes <= svc.maxBytes else {
+            attachmentStatus = "Attachment exceeds \(svc.maxBytes / (1024 * 1024)) MB limit"
+            return
+        }
+
+        isUploadingAttachment = true
+        attachmentStatus = "Preparing attachment…"
         let stripped = svc.stripMetadata(attachment)
+        attachmentStatus = "Encrypting attachment…"
         let encrypted = svc.encryptForUpload(stripped, recipient: chatUsername)
-        _ = try? await svc.upload(encrypted) // then include reference in message
+
+        do {
+            let uploadRef = try await svc.upload(encrypted)
+            attachmentStatus = "Attachment uploaded securely"
+
+            let attachmentMessage = ChatMessage(
+                id: UUID(),
+                chatUsername: chatUsername,
+                direction: .outgoing,
+                ciphertext: "attachment:\(uploadRef)",
+                createdAt: Date(),
+                timer: selectedTimer,
+                state: .sent
+            )
+            messages.append(attachmentMessage)
+        } catch {
+            attachmentStatus = "Attachment upload failed"
+        }
+
+        isUploadingAttachment = false
     }
 }

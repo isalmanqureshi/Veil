@@ -11,6 +11,7 @@ struct ChatView: View {
     
     let username: String
     @StateObject private var vm: ChatViewModel
+    private let attachmentService: AttachmentService = MockAttachmentService()
     
     init(username: String, repo: ChatRepository) {
         self.username = username
@@ -45,42 +46,67 @@ struct ChatView: View {
             }
             
             // Composer
-            HStack(spacing: 10) {
-                TextField("Message", text: $vm.draftText, axis: .vertical)
-                    .lineLimit(1...4)
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(12)
-                
-                Button {
-                    vm.showTimerSelector = true
-                } label: {
-                    Image(systemName: "timer")
+            VStack(spacing: 8) {
+                if let status = vm.attachmentStatus {
+                    HStack(spacing: 8) {
+                        Image(systemName: vm.isUploadingAttachment ? "arrow.trianglehead.2.clockwise" : "checkmark.shield")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(status)
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                .accessibilityLabel("Message timer")
-                .sheet(isPresented: $vm.showTimerSelector) {
-                    MessageTimerSelectorView(
-                        selectedTimer: $vm.selectedTimer,
-                        makeDefault: $vm.makeDefaultForChat
-                    )
+
+                HStack(spacing: 10) {
+                    TextField("Message", text: $vm.draftText, axis: .vertical)
+                        .lineLimit(1...4)
+                        .padding(12)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+
+                    Button {
+                        vm.showTimerSelector = true
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "timer")
+                            Text(vm.selectedTimer.rawValue)
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                    }
+                    .accessibilityLabel("Message timer")
+                    .sheet(isPresented: $vm.showTimerSelector) {
+                        MessageTimerSelectorView(
+                            selectedTimer: $vm.selectedTimer,
+                            makeDefault: $vm.makeDefaultForChat
+                        )
+                    }
+
+                    Button {
+                        Task {
+                            let draft = AttachmentDraft(
+                                fileName: "image.jpg",
+                                bytes: 800_000,
+                                mimeType: "image/jpeg"
+                            )
+                            await vm.addAttachment(draft, svc: attachmentService)
+                        }
+                    } label: {
+                        Image(systemName: "paperclip")
+                    }
+                    .disabled(vm.isUploadingAttachment)
+                    .accessibilityLabel("Attachment")
+
+                    Button {
+                        vm.sendTapped()
+                    } label: {
+                        Image(systemName: "paperplane.circle.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                    }
+                    .disabled(!vm.canSend)
+                    .opacity(vm.canSend ? 1 : 0.4)
+                    .accessibilityLabel("Send")
                 }
-                
-                Button {
-                    // Attachment flow (mock hook)
-                } label: {
-                    Image(systemName: "paperclip")
-                }
-                .accessibilityLabel("Attachment")
-                
-                Button {
-                    vm.sendTapped()
-                } label: {
-                    Image(systemName: "paperplane.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                }
-                .disabled(!vm.canSend)
-                .opacity(vm.canSend ? 1 : 0.4)
-                .accessibilityLabel("Send")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
