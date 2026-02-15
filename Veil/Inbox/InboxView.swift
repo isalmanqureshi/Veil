@@ -62,7 +62,7 @@ struct InboxView: View {
         case .chats:
             if vm.chats.isEmpty {
                 ScrollView {
-                    EmptyChatsState(
+                    EmptyInboxView(
                         onStartChat: { coordinator.push(.startChat) },
                         onShareUsername: { coordinator.push(.status) }
                     )
@@ -105,37 +105,13 @@ struct InboxView: View {
                 }
                 .listStyle(.plain)
                 .refreshable { vm.reload() }
-
-                
-                //Old code
-//                List {
-//                    ForEach(vm.requests) { req in
-//                        if let label = req.signals.riskLabel {
-//                            Text(label)
-//                              .font(.system(size: 12))
-//                              .foregroundStyle(.secondary)
-//                        }
-//
-//                        RequestRow(
-//                            request: req,
-//                            onIgnore: { vm.ignore(req) },
-//                            onAccept: {
-//                                let u = vm.accept(req)
-//                                coordinator.push(.chat(username: u))
-//                            }
-//                        )
-//                    }
-//                }
-//                .listStyle(.plain)
-//                .refreshable { vm.reload() }
             }
         }
     }
 }
 
-
-
 #Preview {
     InboxView(chatRepo: MockChatRepository(crypto: MockCryptoService()),
               requestsRepo: MockMessageRequestsRepository(chatRepo: MockChatRepository(crypto: MockCryptoService())))
+    .environmentObject(AppCoordinator())
 }

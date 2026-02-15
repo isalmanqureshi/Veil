@@ -14,8 +14,7 @@ final class ScreenshotDetector {
             object: nil,
             queue: .main
         ) { _ in
-            trustCenter.record(
-                TrustEvent(
+            trustCenter.log(event: TrustEvent(
                     id: UUID(),
                     type: .screenshotTaken,
                     title: "Screenshot detected",

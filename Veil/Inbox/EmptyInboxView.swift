@@ -9,7 +9,8 @@ import SwiftUI
 
 struct EmptyInboxView: View {
 
-    @EnvironmentObject private var coordinator: AppCoordinator
+    let onStartChat: () -> Void
+    let onShareUsername: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
@@ -18,9 +19,7 @@ struct EmptyInboxView: View {
             Text("No conversations yet")
                 .font(.system(size: 28, weight: .bold))
 
-            Button {
-                coordinator.push(.startChat)
-            } label: {
+            Button(action: onStartChat) {
                 Text("Start a Chat")
                     .font(.system(size: 17, weight: .semibold))
                     .padding(.horizontal, 28)
@@ -30,9 +29,7 @@ struct EmptyInboxView: View {
             .foregroundColor(Color(.systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            Button {
-                coordinator.push(.status)
-            } label: {
+            Button(action: onShareUsername) {
                 Text("Share your username")
                     .font(.system(size: 17))
                     .foregroundStyle(.blue)
@@ -42,20 +39,9 @@ struct EmptyInboxView: View {
             Spacer()
         }
         .padding(.horizontal, 24)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    coordinator.push(.privacy) // or settings route
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 18, weight: .semibold))
-                }
-            }
-        }
     }
 }
 
 #Preview {
-    EmptyInboxView()
+    EmptyInboxView(onStartChat: {}, onShareUsername: {})
 }
