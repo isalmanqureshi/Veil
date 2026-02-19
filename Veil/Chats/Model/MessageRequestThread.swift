@@ -44,7 +44,7 @@ struct MessageRequestThread: Identifiable, Equatable {
 
 protocol MessageRequestsRepository {
     func loadRequests() -> [MessageRequestThread]
-    func accept(requestId: UUID) -> String
+    func accept(requestId: UUID) -> String?
     func ignore(requestId: UUID)
 }
 
@@ -104,8 +104,8 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
             .sorted(by: { $0.createdAt > $1.createdAt })
     }
     
-    func accept(requestId: UUID) -> String {
-        guard let req = requests.first(where: { $0.id == requestId }) else { return "" }
+    func accept(requestId: UUID) -> String? {
+        guard let req = requests.first(where: { $0.id == requestId }) else { return nil }
         requests.removeAll { $0.id == requestId }
         
         // Seed chat history deterministically on accept

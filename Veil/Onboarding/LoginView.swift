@@ -10,7 +10,6 @@ import SwiftUI
 struct LoginView: View {
 
     @EnvironmentObject private var auth: AuthStore
-    @EnvironmentObject private var coordinator: AppCoordinator
 
     @State private var username = ""
     @State private var recoveryKey = ""
@@ -90,18 +89,13 @@ struct LoginView: View {
     private func signIn() {
         guard canSubmit else { return }
 
-        let ok = auth.login(username: normalizedUsername, recoveryKey: normalizedRecoveryKey)
-        if ok {
-            coordinator.path.removeAll()
-        }
+        _ = auth.login(username: normalizedUsername, recoveryKey: normalizedRecoveryKey)
     }
 }
 
 #Preview {
-    let coordinator = AppCoordinator()
     let environment = AppEnvironment()
 
     return LoginView()
-        .environmentObject(coordinator)
         .environmentObject(AuthStore(authRepo: environment.authRepo))
 }

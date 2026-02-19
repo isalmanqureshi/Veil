@@ -69,7 +69,6 @@ struct WelcomeView: View {
     }
 
     private func createAccount() {
-        coordinator.path.removeAll()
         auth.startOnboarding()
     }
 

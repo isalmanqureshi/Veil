@@ -112,7 +112,7 @@ struct RequestDetailsView: View {
                     let username = requestsRepo.accept(requestId: req.id)
                     request = nil
 
-                    guard !username.isEmpty else {
+                    guard let username else {
                         coordinator.pop()
                         return
                     }

@@ -12,7 +12,6 @@ struct TrustWarningView: View {
     let title: String
     let message: String
     
-    @EnvironmentObject private var trustCenter: TrustCenter
     
     var body: some View {
         VStack(spacing: 16) {
@@ -37,8 +36,5 @@ struct TrustWarningView: View {
 
 
 #Preview {
-    let coordinator = AppCoordinator()
-
-    return TrustWarningView(title: "Shield", message: "This is to put trust")
-        .environmentObject(TrustCenter(coordinator: coordinator))
+    TrustWarningView(title: "Shield", message: "This is to put trust")
 }

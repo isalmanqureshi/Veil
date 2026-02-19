@@ -10,7 +10,6 @@ import SwiftUI
 struct RecoveryKeyView: View {
 
     @EnvironmentObject private var auth: AuthStore
-    @EnvironmentObject private var coordinator: AppCoordinator
 
     private var recoveryKey: String { auth.onboardingRecoveryKey }
 
@@ -111,10 +110,6 @@ struct RecoveryKeyView: View {
 
             Button {
                 auth.finishOnboarding()
-
-                if case .signedIn = auth.state {
-                    coordinator.path.removeAll()
-                }
             } label: {
                 Text("Finish setup")
                     .font(.system(size: 17, weight: .semibold))
@@ -150,7 +145,6 @@ struct RecoveryKeyView: View {
 }
 
 #Preview {
-    let coordinator = AppCoordinator()
     let environment = AppEnvironment()
     let auth = AuthStore(authRepo: environment.authRepo)
     auth.startOnboarding()
@@ -158,6 +152,5 @@ struct RecoveryKeyView: View {
     auth.prepareRecoveryKeyIfNeeded()
 
     return RecoveryKeyView()
-        .environmentObject(coordinator)
         .environmentObject(auth)
 }
