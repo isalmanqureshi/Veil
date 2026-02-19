@@ -6,9 +6,13 @@
 //
 import Foundation
 
+enum AuthRepositoryError: Error {
+    case invalidGeneratedRecoveryKey
+}
+
 protocol AuthRepository {
     func loadCurrentUser() -> UserIdentity?
-    func prepareRecoveryKey() -> (recoveryKey: String, seed: Data)
+    func prepareRecoveryKey() throws -> (recoveryKey: String, seed: Data)
     func createUser(username: String, seed: Data, recoveryKey: String) -> UserIdentity
     func restoreUser(username: String, recoveryKey: String) -> UserIdentity?
     func clear()
@@ -30,10 +34,10 @@ final class MockAuthRepository: AuthRepository {
         return UserIdentity(id: UUID(), username: username, recoveryKey: "stored-on-device", isVerified: false)
     }
 
-    func prepareRecoveryKey() -> (recoveryKey: String, seed: Data) {
+    func prepareRecoveryKey() throws -> (recoveryKey: String, seed: Data) {
         let key = RecoveryKeyGenerator.generate()
         guard let seed = try? RecoveryKeyGenerator.decode(key) else {
-            return (key, Data())
+            throw AuthRepositoryError.invalidGeneratedRecoveryKey
         }
         return (key, seed)
     }

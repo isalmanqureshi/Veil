@@ -44,9 +44,13 @@ final class AuthStore: ObservableObject {
     func prepareRecoveryKeyIfNeeded() {
         guard onboardingRecoveryKey.isEmpty else { return }
 
-        let prepared = authRepo.prepareRecoveryKey()
-        onboardingRecoveryKey = prepared.recoveryKey
-        onboardingSeed = prepared.seed
+        do {
+            let prepared = try authRepo.prepareRecoveryKey()
+            onboardingRecoveryKey = prepared.recoveryKey
+            onboardingSeed = prepared.seed
+        } catch {
+            onboardingErrorMessage = "Couldn’t generate a recovery key right now. Please try again."
+        }
     }
 
     func finishOnboarding() {

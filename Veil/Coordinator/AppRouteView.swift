@@ -105,7 +105,7 @@ struct AppRootView: View {
             GroupCreationView()
             
         case .requestDetails(let id):
-            RequestDetailsView(requestId: id, chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
+            RequestDetailsView(requestId: id, requestsRepo: environment.requestsRepo)
 
         case .trustWarning(let title, let message):
             TrustWarningView(title: title, message: message)
