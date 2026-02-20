@@ -21,6 +21,7 @@ import SwiftUI
  Every run → same behavior.
  */
 
+@MainActor
 final class AppEnvironment: ObservableObject {
 
     let authRepo: AuthRepository
