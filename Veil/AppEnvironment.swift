@@ -29,6 +29,8 @@ final class AppEnvironment: ObservableObject {
     let trustRepo: TrustRepository
     let chatRepo: ChatRepository
     let requestsRepo: MessageRequestsRepository
+    let purchaseProvider: PurchaseProvider
+    let entitlements: EntitlementsStore
 
     init(
         authRepo: AuthRepository = MockAuthRepository(),
@@ -44,5 +46,13 @@ final class AppEnvironment: ObservableObject {
         let chat = MockChatRepository(crypto: crypto)
         self.chatRepo = chat
         self.requestsRepo = MockMessageRequestsRepository(chatRepo: chat)
+
+#if targetEnvironment(simulator)
+        let purchaseProvider: PurchaseProvider = MockPurchaseProvider()
+#else
+        let purchaseProvider: PurchaseProvider = FallbackPurchaseProvider()
+#endif
+        self.purchaseProvider = purchaseProvider
+        self.entitlements = EntitlementsStore(purchaseProvider: purchaseProvider)
     }
 }
