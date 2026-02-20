@@ -16,6 +16,7 @@ enum AppRoute: Hashable {
     case chat(username: String)
     case status
     case privacy
+    case privacyPolicy
     case groupCreation
     case requestDetails(id: UUID)
     case trustWarning(title: String, message: String)
@@ -54,8 +55,10 @@ struct AppRootView: View {
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
         }
-        .onChange(of: auth.state) { _, _ in
-            coordinator.path.removeAll()
+        .onChange(of: auth.state) { _, newState in
+            if case .signedOut = newState {
+                coordinator.path.removeAll()
+            }
         }
     }
 
@@ -100,6 +103,9 @@ struct AppRootView: View {
 
         case .privacy:
             PrivacyDashboardView()
+
+        case .privacyPolicy:
+            PrivacyPolicyWebView()
 
         case .groupCreation:
             GroupCreationView()

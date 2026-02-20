@@ -90,6 +90,9 @@ final class AuthStore: ObservableObject {
 
     func signOut() {
         authRepo.clear()
+        onboardingUsername = ""
+        onboardingRecoveryKey = ""
+        onboardingSeed = nil
         loginErrorMessage = nil
         onboardingErrorMessage = nil
         state = .signedOut

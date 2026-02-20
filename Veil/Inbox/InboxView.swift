@@ -111,11 +111,15 @@ struct InboxView: View {
 }
 
 #Preview {
-    let chatRepo = MockChatRepository(crypto: MockCryptoService())
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
 
     return InboxView(
-        chatRepo: chatRepo,
-        requestsRepo: MockMessageRequestsRepository(chatRepo: chatRepo)
+        chatRepo: environment.chatRepo,
+        requestsRepo: environment.requestsRepo
     )
-    .environmentObject(AppCoordinator())
+    .environmentObject(coordinator)
+    .environmentObject(environment)
+    .environmentObject(TrustCenter(coordinator: coordinator))
+    .environmentObject(AuthStore(authRepo: environment.authRepo))
 }
