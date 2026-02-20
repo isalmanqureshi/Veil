@@ -122,6 +122,7 @@ private struct ChatComposerView: View {
     var isFocused: FocusState<Bool>.Binding
     @Binding var showAttachmentOptions: Bool
     @Binding var isRecording: Bool
+    @State private var micPressStartedAt: Date?
 
     let onSend: () -> Void
     let onEmojiTap: () -> Void
@@ -191,17 +192,31 @@ private struct ChatComposerView: View {
                 Image(systemName: "mic.fill")
                     .foregroundStyle(.secondary)
                     .gesture(
-                        LongPressGesture(minimumDuration: 0.25)
+                        DragGesture(minimumDistance: 0)
                             .onChanged { _ in
+                                guard micPressStartedAt == nil else { return }
+                                micPressStartedAt = Date()
                                 isRecording = true
                             }
                             .onEnded { _ in
+                                let startedAt = micPressStartedAt
+                                micPressStartedAt = nil
+
+                                guard isRecording else { return }
                                 isRecording = false
+
+                                guard let startedAt,
+                                      Date().timeIntervalSince(startedAt) >= 0.25 else { return }
+
                                 onMicRelease()
                             }
                     )
                     .accessibilityLabel("Hold to record voice note")
             }
+        }
+        .onDisappear {
+            isRecording = false
+            micPressStartedAt = nil
         }
     }
 }
