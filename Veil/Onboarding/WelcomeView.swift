@@ -59,7 +59,7 @@ struct WelcomeView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 12)
 
-            Button(action: { coordinator.push(.privacy) }) {
+            Button(action: { coordinator.push(.privacyPolicy) }) {
                 Text("Learn how privacy works")
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)

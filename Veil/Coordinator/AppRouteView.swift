@@ -16,6 +16,7 @@ enum AppRoute: Hashable {
     case chat(username: String)
     case status
     case privacy
+    case privacyPolicy
     case groupCreation
     case requestDetails(id: UUID)
     case trustWarning(title: String, message: String)
@@ -102,6 +103,9 @@ struct AppRootView: View {
 
         case .privacy:
             PrivacyDashboardView()
+
+        case .privacyPolicy:
+            PrivacyPolicyWebView()
 
         case .groupCreation:
             GroupCreationView()
