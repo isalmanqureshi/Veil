@@ -123,6 +123,7 @@ private struct ChatComposerView: View {
     @Binding var showAttachmentOptions: Bool
     @Binding var isRecording: Bool
     @State private var micPressStartedAt: Date?
+    @State private var micReadyToSend = false
 
     let onSend: () -> Void
     let onEmojiTap: () -> Void
@@ -191,25 +192,31 @@ private struct ChatComposerView: View {
 
                 Image(systemName: "mic.fill")
                     .foregroundStyle(.secondary)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { _ in
-                                guard micPressStartedAt == nil else { return }
-                                micPressStartedAt = Date()
-                                isRecording = true
+                    .onLongPressGesture(
+                        minimumDuration: 0.25,
+                        maximumDistance: 44,
+                        pressing: { pressing in
+                            if pressing {
+                                if micPressStartedAt == nil {
+                                    micPressStartedAt = Date()
+                                    micReadyToSend = false
+                                    isRecording = true
+                                }
+                                return
                             }
-                            .onEnded { _ in
-                                let startedAt = micPressStartedAt
-                                micPressStartedAt = nil
 
-                                guard isRecording else { return }
-                                isRecording = false
+                            let shouldSend = micReadyToSend
+                            micPressStartedAt = nil
+                            micReadyToSend = false
+                            isRecording = false
 
-                                guard let startedAt,
-                                      Date().timeIntervalSince(startedAt) >= 0.25 else { return }
-
+                            if shouldSend {
                                 onMicRelease()
                             }
+                        },
+                        perform: {
+                            micReadyToSend = true
+                        }
                     )
                     .accessibilityLabel("Hold to record voice note")
             }
@@ -217,6 +224,7 @@ private struct ChatComposerView: View {
         .onDisappear {
             isRecording = false
             micPressStartedAt = nil
+            micReadyToSend = false
         }
     }
 }
