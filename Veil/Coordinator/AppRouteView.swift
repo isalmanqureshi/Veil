@@ -54,8 +54,10 @@ struct AppRootView: View {
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
         }
-        .onChange(of: auth.state) { _, _ in
-            coordinator.path.removeAll()
+        .onChange(of: auth.state) { _, newState in
+            if case .signedOut = newState {
+                coordinator.path.removeAll()
+            }
         }
     }
 

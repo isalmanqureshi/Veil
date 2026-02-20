@@ -83,5 +83,7 @@ struct WelcomeView: View {
 
     return WelcomeView()
         .environmentObject(coordinator)
+        .environmentObject(environment)
+        .environmentObject(TrustCenter(coordinator: coordinator))
         .environmentObject(AuthStore(authRepo: environment.authRepo))
 }

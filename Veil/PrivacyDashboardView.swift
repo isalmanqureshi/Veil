@@ -9,6 +9,8 @@ import SwiftUI
 
 struct PrivacyDashboardView: View {
 
+    @EnvironmentObject private var auth: AuthStore
+
     var body: some View {
         List {
 
@@ -36,6 +38,14 @@ struct PrivacyDashboardView: View {
                 Text("Last security check: Today")
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Button(role: .destructive) {
+                    auth.signOut()
+                } label: {
+                    Text("Sign Out")
+                }
+            }
         }
         .navigationTitle("Privacy")
     }
@@ -43,5 +53,12 @@ struct PrivacyDashboardView: View {
 
 
 #Preview {
-    PrivacyDashboardView()
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
+
+    return PrivacyDashboardView()
+        .environmentObject(coordinator)
+        .environmentObject(environment)
+        .environmentObject(TrustCenter(coordinator: coordinator))
+        .environmentObject(AuthStore(authRepo: environment.authRepo))
 }
