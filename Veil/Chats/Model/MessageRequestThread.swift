@@ -6,6 +6,11 @@
 //
 import Foundation
 
+private func stableUUID(_ rawValue: String) -> UUID {
+    UUID(uuidString: rawValue) ?? UUID()
+}
+
+
 struct RequestSignals: Equatable {
     enum ProofOfWork: Equatable {
         case none
@@ -39,7 +44,7 @@ struct MessageRequestThread: Identifiable, Equatable {
 
 protocol MessageRequestsRepository {
     func loadRequests() -> [MessageRequestThread]
-    func accept(requestId: UUID) -> String
+    func accept(requestId: UUID) -> String?
     func ignore(requestId: UUID)
 }
 
@@ -55,7 +60,7 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
         //You can vary this per sender (e.g., “heavy” for spammy-looking usernames) deterministically.
         self.requests = [
             MessageRequestThread(
-                id: UUID(uuidString: "99999999-8888-7777-6666-555555555555")!,
+                id: stableUUID("99999999-8888-7777-6666-555555555555"),
                 fromUsername: "unknown_veil",
                 previewCiphertext: "enc(you):?olleH",
                 createdAt: base.addingTimeInterval(-1800),
@@ -67,7 +72,7 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
                 )
             ),
             MessageRequestThread(
-                id: UUID(uuidString: "99999999-8888-7777-6666-555555555556")!,
+                id: stableUUID("99999999-8888-7777-6666-555555555556"),
                 fromUsername: "new_friend",
                 previewCiphertext: "enc(you):!iH",
                 createdAt: base.addingTimeInterval(-900),
@@ -79,7 +84,7 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
                 )
             ),
             MessageRequestThread(
-                id: UUID(uuidString: "99999999-8888-7777-6666-555555555557")!,
+                id: stableUUID("99999999-8888-7777-6666-555555555557"),
                 fromUsername: "community_mod",
                 previewCiphertext: "enc(you):etadpu ytefaS",
                 createdAt: base.addingTimeInterval(-3000),
@@ -99,8 +104,8 @@ final class MockMessageRequestsRepository: MessageRequestsRepository {
             .sorted(by: { $0.createdAt > $1.createdAt })
     }
     
-    func accept(requestId: UUID) -> String {
-        guard let req = requests.first(where: { $0.id == requestId }) else { return "" }
+    func accept(requestId: UUID) -> String? {
+        guard let req = requests.first(where: { $0.id == requestId }) else { return nil }
         requests.removeAll { $0.id == requestId }
         
         // Seed chat history deterministically on accept

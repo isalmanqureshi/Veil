@@ -54,6 +54,9 @@ struct AppRootView: View {
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
         }
+        .onChange(of: auth.state) { _, _ in
+            coordinator.path.removeAll()
+        }
     }
 
     @ViewBuilder
@@ -102,7 +105,7 @@ struct AppRootView: View {
             GroupCreationView()
             
         case .requestDetails(let id):
-            RequestDetailsView(requestId: id, chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
+            RequestDetailsView(requestId: id, requestsRepo: environment.requestsRepo)
 
         case .trustWarning(let title, let message):
             TrustWarningView(title: title, message: message)

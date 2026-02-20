@@ -12,15 +12,13 @@ struct RequestDetailsView: View {
     @EnvironmentObject private var coordinator: AppCoordinator
 
     let requestId: UUID
-    private let chatRepo: ChatRepository
     private let requestsRepo: MessageRequestsRepository
 
     @State private var request: MessageRequestThread?
     @State private var showReportSheet = false
 
-    init(requestId: UUID, chatRepo: ChatRepository, requestsRepo: MessageRequestsRepository) {
+    init(requestId: UUID, requestsRepo: MessageRequestsRepository) {
         self.requestId = requestId
-        self.chatRepo = chatRepo
         self.requestsRepo = requestsRepo
     }
 
@@ -111,6 +109,12 @@ struct RequestDetailsView: View {
                 Button {
                     let username = requestsRepo.accept(requestId: req.id)
                     request = nil
+
+                    guard let username else {
+                        coordinator.pop()
+                        return
+                    }
+
                     coordinator.push(.chat(username: username))
                 } label: {
                     Text(acceptTitle(for: req))

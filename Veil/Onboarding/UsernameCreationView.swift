@@ -138,17 +138,29 @@ struct UsernameCreationView: View {
     }
 
     private func generateUsername() {
-        let adjectives = ["quiet", "solid", "simple", "swift", "clear", "frost"]
-        let nouns = ["field", "signal", "river", "ember", "harbor", "orbit"]
+        let candidates = [
+            "quiet_signal_24",
+            "solid_river_37",
+            "swift_orbit_52",
+            "clear_harbor_68",
+            "frost_field_73"
+        ]
 
-        let adjective = adjectives.randomElement() ?? "quiet"
-        let noun = nouns.randomElement() ?? "signal"
-        let number = Int.random(in: 10...99)
+        let preferredLength = 14
+        let next = candidates
+            .first(where: { $0 != normalizedUsername && abs($0.count - preferredLength) < 4 })
+            ?? candidates.first
+            ?? "quiet_signal_24"
 
-        username = UsernameRules.sanitize("\(adjective)_\(noun)_\(number)")
+        username = UsernameRules.sanitize(next)
     }
 }
 
 #Preview {
-    UsernameCreationView()
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
+
+    return UsernameCreationView()
+        .environmentObject(coordinator)
+        .environmentObject(AuthStore(authRepo: environment.authRepo))
 }

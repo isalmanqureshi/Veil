@@ -7,10 +7,6 @@
 import Foundation
 
 enum AuthState: Equatable {
-    static func == (lhs: AuthState, rhs: AuthState) -> Bool {
-        return true
-    }
-    
     case signedOut
     case onboarding
     case signedIn(user: UserIdentity)

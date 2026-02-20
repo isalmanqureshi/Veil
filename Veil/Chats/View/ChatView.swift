@@ -122,6 +122,8 @@ private struct ChatComposerView: View {
     var isFocused: FocusState<Bool>.Binding
     @Binding var showAttachmentOptions: Bool
     @Binding var isRecording: Bool
+    @State private var micPressStartedAt: Date?
+    @State private var micReadyToSend = false
 
     let onSend: () -> Void
     let onEmojiTap: () -> Void
@@ -190,18 +192,39 @@ private struct ChatComposerView: View {
 
                 Image(systemName: "mic.fill")
                     .foregroundStyle(.secondary)
-                    .gesture(
-                        LongPressGesture(minimumDuration: 0.25)
-                            .onChanged { _ in
-                                isRecording = true
+                    .onLongPressGesture(
+                        minimumDuration: 0.25,
+                        maximumDistance: 44,
+                        pressing: { pressing in
+                            if pressing {
+                                if micPressStartedAt == nil {
+                                    micPressStartedAt = Date()
+                                    micReadyToSend = false
+                                    isRecording = true
+                                }
+                                return
                             }
-                            .onEnded { _ in
-                                isRecording = false
+
+                            let shouldSend = micReadyToSend
+                            micPressStartedAt = nil
+                            micReadyToSend = false
+                            isRecording = false
+
+                            if shouldSend {
                                 onMicRelease()
                             }
+                        },
+                        perform: {
+                            micReadyToSend = true
+                        }
                     )
                     .accessibilityLabel("Hold to record voice note")
             }
+        }
+        .onDisappear {
+            isRecording = false
+            micPressStartedAt = nil
+            micReadyToSend = false
         }
     }
 }
