@@ -3,46 +3,41 @@ import CryptoKit
 
 final class NetworkChatRepository: ChatRepository {
     private let crypto: CryptoService
-    private let messageService: MessageService
-    private let preKeyService: PreKeyService
+    private let messagesService: MessagesService
+    private let preKeysService: PreKeysService
     private let localKeyManager: KeyManager
     private let sessionManager: SessionManager
+    private let authContext: LocalAuthContext
 
     private let lock = NSLock()
     private var store: [String: [ChatMessage]] = [:]
     private var threadIdByUsername: [String: UUID] = [:]
-    private var didPublishBundle = false
 
     init(
         crypto: CryptoService,
-        messageService: MessageService,
-        preKeyService: PreKeyService,
+        messagesService: MessagesService,
+        preKeysService: PreKeysService,
         localKeyManager: KeyManager = KeyManager(),
-        sessionStore: SessionStore = InMemorySessionStore()
+        sessionStore: SessionStore = InMemorySessionStore(),
+        authContext: LocalAuthContext = LocalAuthContext()
     ) {
         self.crypto = crypto
-        self.messageService = messageService
-        self.preKeyService = preKeyService
+        self.messagesService = messagesService
+        self.preKeysService = preKeysService
         self.localKeyManager = localKeyManager
         self.sessionManager = SessionManager(keyManager: localKeyManager, store: sessionStore)
+        self.authContext = authContext
     }
 
     func loadMessages(chatUsername: String) -> [ChatMessage] {
-        lock.withLock {
-            store[chatUsername, default: []]
-        }
+        lock.withLock { store[chatUsername, default: []] }
     }
 
     func listChats() -> [ChatThread] {
         lock.withLock {
             store.compactMap { username, msgs in
                 guard let last = msgs.max(by: { $0.createdAt < $1.createdAt }) else { return nil }
-                return ChatThread(
-                    id: deterministicThreadId(for: username),
-                    username: username,
-                    lastPreview: last.plaintextPreview,
-                    lastAt: last.createdAt
-                )
+                return ChatThread(id: deterministicThreadId(for: username), username: username, lastPreview: last.plaintextPreview, lastAt: last.createdAt)
             }
             .sorted(by: {
                 if $0.lastAt == $1.lastAt { return $0.username < $1.username }
@@ -52,57 +47,78 @@ final class NetworkChatRepository: ChatRepository {
     }
 
     func sendMessage(chatUsername: String, plaintext: String, timer: MessageTimer) async throws -> ChatMessage {
+        guard let fromUsername = authContext.currentUsername() else {
+            throw APIError.server(statusCode: 401, message: "Not signed in")
+        }
+
+        let deviceId = authContext.currentDeviceId()
         var session = try await ensureSession(for: chatUsername)
-        let ciphertext = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
+        let payloadB64 = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
         sessionManager.saveSession(session)
 
-        let envelope = MessageEnvelopeDTO(version: 1, to: chatUsername, from: nil, payloadB64: ciphertext)
-        try await messageService.sendEnvelope(envelope)
+        let request = SendMessageRequestDTO(
+            fromUsername: fromUsername,
+            toUsername: chatUsername,
+            deviceId: deviceId,
+            payloadB64: payloadB64,
+            envelopeVersion: 1,
+            oneTimePreKeyId: session.remoteOneTimePreKeyId,
+            timer: timer.rawValue,
+            clientMessageId: UUID().uuidString
+        )
+
+        _ = try await messagesService.sendEnvelope(request)
 
         let sent = ChatMessage(
             id: UUID(),
             chatUsername: chatUsername,
             direction: .outgoing,
-            ciphertext: ciphertext,
+            ciphertext: payloadB64,
             plaintextPreview: plaintext,
             createdAt: Date(),
             timer: timer,
             state: .sent
         )
 
-        lock.withLock {
-            store[chatUsername, default: []].append(sent)
-        }
-
+        append(sent)
         return sent
     }
 
-    func ingestIncoming(_ envelopes: [MessageEnvelopeDTO]) {
-        guard !envelopes.isEmpty else { return }
+    func ensureChatExists(username: String) {
+        lock.withLock {
+            _ = store[username, default: []]
+        }
+    }
 
-        let incoming = envelopes.compactMap { dto -> ChatMessage? in
-            let username = dto.from ?? dto.to
-            guard var session = sessionManager.session(for: username) else { return nil }
-            guard let plaintext = try? crypto.decrypt(ciphertext: dto.payloadB64, for: username, session: &session) else {
-                return nil
-            }
+    func ingestIncoming(_ envelopes: [InboxEnvelopeDTO]) -> [String] {
+        var ackIds: [String] = []
+
+        for envelope in envelopes {
+            guard var session = sessionManager.session(for: envelope.fromUsername) else { continue }
+            guard let plaintext = try? crypto.decrypt(ciphertext: envelope.payloadB64, for: envelope.fromUsername, session: &session) else { continue }
             sessionManager.saveSession(session)
-            return ChatMessage(
-                id: UUID(),
-                chatUsername: username,
+
+            let message = ChatMessage(
+                id: stableMessageUUID(from: envelope.serverMessageId),
+                chatUsername: envelope.fromUsername,
                 direction: .incoming,
-                ciphertext: dto.payloadB64,
+                ciphertext: envelope.payloadB64,
                 plaintextPreview: plaintext,
-                createdAt: Date(),
-                timer: .hour1,
+                createdAt: envelope.queuedAt,
+                timer: MessageTimer(rawValue: envelope.timer ?? "") ?? .hour1,
                 state: .sent
             )
+
+            append(message)
+            ackIds.append(envelope.serverMessageId)
         }
 
+        return ackIds
+    }
+
+    private func append(_ message: ChatMessage) {
         lock.withLock {
-            for message in incoming {
-                store[message.chatUsername, default: []].append(message)
-            }
+            store[message.chatUsername, default: []].append(message)
         }
     }
 
@@ -111,34 +127,27 @@ final class NetworkChatRepository: ChatRepository {
             return existing
         }
 
-        try await publishBundleIfNeeded()
-        let remoteBundle = try await preKeyService.fetchBundle(username: username)
+        let remoteBundle = try await preKeysService.fetch(username: username).toDomain()
         return try sessionManager.establishSessionAsInitiator(remote: remoteBundle)
     }
 
+    private func stableMessageUUID(from serverMessageId: String) -> UUID {
+        let digest = SHA256.hash(data: Data("msg.network.\(serverMessageId)".utf8))
+        let bytes = Array(digest)
+        let uuidString = String(
+            format: "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5],
+            bytes[6], bytes[7],
+            bytes[8], bytes[9],
+            bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        )
 
-    private func publishBundleIfNeeded() async throws {
-        let shouldPublish = lock.withLock {
-            if didPublishBundle { return false }
-            didPublishBundle = true
-            return true
-        }
-
-        guard shouldPublish else { return }
-
-        do {
-            let bundle = try localKeyManager.makePreKeyBundle(oneTimeCount: 20)
-            try await preKeyService.publishBundle(bundle)
-        } catch {
-            lock.withLock { didPublishBundle = false }
-            throw error
-        }
+        return UUID(uuidString: uuidString) ?? UUID()
     }
 
     private func deterministicThreadId(for username: String) -> UUID {
-        if let existing = threadIdByUsername[username] {
-            return existing
-        }
+        if let existing = threadIdByUsername[username] { return existing }
 
         let digest = SHA256.hash(data: Data("thread.network.\(username)".utf8))
         let bytes = Array(digest)

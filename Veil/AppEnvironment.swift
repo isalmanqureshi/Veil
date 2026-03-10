@@ -1,9 +1,3 @@
-//
-//  AppEnvironment.swift
-//  Veil
-//
-//  Created by Salman Qureshi on 2/10/26.
-//
 import SwiftUI
 
 @MainActor
@@ -21,8 +15,9 @@ final class AppEnvironment: ObservableObject {
     let entitlements: EntitlementsStore
 
     let httpClient: HTTPClient?
-    let preKeyService: PreKeyService?
-    let messageService: MessageService?
+    let usersService: UsersService?
+    let preKeysService: PreKeysService?
+    let messagesService: MessagesService?
     let requestsService: RequestsService?
 
     private let poller: MessagePoller?
@@ -31,53 +26,57 @@ final class AppEnvironment: ObservableObject {
 
     init(
         config: BackendConfig = .default,
-        authRepo: AuthRepository = MockAuthRepository(),
+        authRepo: AuthRepository? = nil,
         identityRepo: IdentityRepository = MockIdentityRepository(),
         crypto: CryptoService = MockCryptoService(),
-        trustRepo: TrustRepository = MockTrustRepository()
+        trustRepo: TrustRepository = MockTrustRepository(),
+        purchaseProvider: PurchaseProvider = FallbackPurchaseProvider()
     ) {
         self.config = config
-        self.authRepo = authRepo
         self.identityRepo = identityRepo
         self.trustRepo = trustRepo
         self.crypto = crypto
+        self.purchaseProvider = purchaseProvider
+        self.entitlements = EntitlementsStore(purchaseProvider: purchaseProvider)
 
-        if config.useMock {
+        if config.useMockBackend {
             self.httpClient = nil
-            self.preKeyService = nil
-            self.messageService = nil
+            self.usersService = nil
+            self.preKeysService = nil
+            self.messagesService = nil
             self.requestsService = nil
 
+            let finalAuthRepo = authRepo ?? MockAuthRepository()
             let chat = MockChatRepository(crypto: crypto)
+            self.authRepo = finalAuthRepo
             self.chatRepo = chat
             self.requestsRepo = MockMessageRequestsRepository(chatRepo: chat)
             self.poller = nil
         } else {
             let httpClient = HTTPClient(config: config)
-            let preKeyService = NetworkPreKeyService(httpClient: httpClient)
-            let messageService = NetworkMessageService(httpClient: httpClient)
+            let usersService = NetworkUsersService(httpClient: httpClient)
+            let preKeysService = NetworkPreKeysService(httpClient: httpClient)
+            let messagesService = NetworkMessagesService(httpClient: httpClient)
             let requestsService = NetworkRequestsService(httpClient: httpClient)
 
-            let chatRepo = NetworkChatRepository(
-                crypto: crypto,
-                messageService: messageService,
-                preKeyService: preKeyService
-            )
-            let requestsRepo = NetworkMessageRequestsRepository(
-                service: requestsService,
-                chatRepo: chatRepo
-            )
+            let localAuth = authRepo ?? MockAuthRepository()
+            let networkAuth = NetworkAuthRepository(local: localAuth, usersService: usersService, preKeysService: preKeysService)
+            let chatRepo = NetworkChatRepository(crypto: crypto, messagesService: messagesService, preKeysService: preKeysService)
+            let requestsRepo = NetworkMessageRequestsRepository(service: requestsService, chatRepo: chatRepo)
 
             self.httpClient = httpClient
-            self.preKeyService = preKeyService
-            self.messageService = messageService
+            self.usersService = usersService
+            self.preKeysService = preKeysService
+            self.messagesService = messagesService
             self.requestsService = requestsService
+            self.authRepo = networkAuth
             self.chatRepo = chatRepo
             self.requestsRepo = requestsRepo
             self.poller = MessagePoller(
-                messageService: messageService,
+                messagesService: messagesService,
                 chatRepository: chatRepo,
-                requestsRepository: requestsRepo
+                requestsRepository: requestsRepo,
+                pollIntervalSeconds: config.pollIntervalSeconds
             )
         }
     }
