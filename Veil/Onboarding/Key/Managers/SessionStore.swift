@@ -32,6 +32,7 @@ struct SkippedKey: Codable, Equatable {
 struct SessionState: Codable, Equatable {
     let username: String
     let createdAt: Date
+    let remoteOneTimePreKeyId: UInt32?
 
     // X3DH output
     let rootKey: Data
