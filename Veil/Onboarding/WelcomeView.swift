@@ -83,5 +83,5 @@ struct WelcomeView: View {
 
     return WelcomeView()
         .environmentObject(coordinator)
-        .environmentObject(AuthStore(authRepo: environment.authRepo))
+        .environmentObject(AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
 }

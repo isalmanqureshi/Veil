@@ -97,5 +97,5 @@ struct LoginView: View {
     let environment = AppEnvironment()
 
     return LoginView()
-        .environmentObject(AuthStore(authRepo: environment.authRepo))
+        .environmentObject(AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
 }

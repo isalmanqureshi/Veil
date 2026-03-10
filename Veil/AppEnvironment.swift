@@ -13,6 +13,8 @@ final class AppEnvironment: ObservableObject {
     let requestsRepo: MessageRequestsRepository
     let purchaseProvider: PurchaseProvider
     let entitlements: EntitlementsStore
+    let identitySyncService: IdentitySyncService
+    let deviceIdentityStore: DeviceIdentityStore
 
     let httpClient: HTTPClient?
     let usersService: UsersService?
@@ -38,6 +40,7 @@ final class AppEnvironment: ObservableObject {
         self.crypto = crypto
         self.purchaseProvider = purchaseProvider
         self.entitlements = EntitlementsStore(purchaseProvider: purchaseProvider)
+        self.deviceIdentityStore = DeviceIdentityStore()
 
         if config.useMockBackend {
             self.httpClient = nil
@@ -49,6 +52,7 @@ final class AppEnvironment: ObservableObject {
             let finalAuthRepo = authRepo ?? MockAuthRepository()
             let chat = MockChatRepository(crypto: crypto)
             self.authRepo = finalAuthRepo
+            self.identitySyncService = NoopIdentitySyncService()
             self.chatRepo = chat
             self.requestsRepo = MockMessageRequestsRepository(chatRepo: chat)
             self.poller = nil
@@ -60,7 +64,6 @@ final class AppEnvironment: ObservableObject {
             let requestsService = NetworkRequestsService(httpClient: httpClient)
 
             let localAuth = authRepo ?? MockAuthRepository()
-            let networkAuth = NetworkAuthRepository(local: localAuth, usersService: usersService, preKeysService: preKeysService)
             let chatRepo = NetworkChatRepository(crypto: crypto, messagesService: messagesService, preKeysService: preKeysService)
             let requestsRepo = NetworkMessageRequestsRepository(service: requestsService, chatRepo: chatRepo)
 
@@ -69,7 +72,8 @@ final class AppEnvironment: ObservableObject {
             self.preKeysService = preKeysService
             self.messagesService = messagesService
             self.requestsService = requestsService
-            self.authRepo = networkAuth
+            self.authRepo = localAuth
+            self.identitySyncService = NetworkIdentitySyncService(usersService: usersService, preKeysService: preKeysService)
             self.chatRepo = chatRepo
             self.requestsRepo = requestsRepo
             self.poller = MessagePoller(

@@ -7,6 +7,13 @@
 
 import SwiftUI
 
+enum BackendSyncState: Equatable {
+    case idle
+    case syncing
+    case synced
+    case failed(message: String)
+}
+
 @MainActor
 final class AuthStore: ObservableObject {
 
@@ -15,12 +22,21 @@ final class AuthStore: ObservableObject {
     @Published private(set) var onboardingRecoveryKey: String = ""
     @Published private(set) var onboardingErrorMessage: String?
     @Published private(set) var loginErrorMessage: String?
+    @Published private(set) var backendSyncState: BackendSyncState = .idle
 
     private var onboardingSeed: Data?
     private let authRepo: AuthRepository
+    private let identitySyncService: IdentitySyncService
+    private let deviceIdentityStore: DeviceIdentityStore
 
-    init(authRepo: AuthRepository) {
+    init(
+        authRepo: AuthRepository,
+        identitySyncService: IdentitySyncService = NoopIdentitySyncService(),
+        deviceIdentityStore: DeviceIdentityStore = DeviceIdentityStore()
+    ) {
         self.authRepo = authRepo
+        self.identitySyncService = identitySyncService
+        self.deviceIdentityStore = deviceIdentityStore
         bootstrap()
     }
 
@@ -83,6 +99,7 @@ final class AuthStore: ObservableObject {
             onboardingRecoveryKey = ""
             onboardingSeed = nil
             state = .signedIn(user: user)
+            triggerBackendSync(for: normalizedUsername)
         } catch {
             onboardingErrorMessage = "Couldn’t finish setup right now. Please try again."
         }
@@ -92,6 +109,7 @@ final class AuthStore: ObservableObject {
         authRepo.clear()
         loginErrorMessage = nil
         onboardingErrorMessage = nil
+        backendSyncState = .idle
         state = .signedOut
     }
 
@@ -126,6 +144,30 @@ final class AuthStore: ObservableObject {
         }
 
         state = .signedIn(user: user)
+        triggerBackendSync(for: normalizedUsername)
         return true
+    }
+
+    func retryPendingSync() async {
+        guard case .signedIn(let user) = state else { return }
+        await syncIdentityAndPreKeys(username: user.username)
+    }
+
+    private func triggerBackendSync(for username: String) {
+        Task {
+            await syncIdentityAndPreKeys(username: username)
+        }
+    }
+
+    private func syncIdentityAndPreKeys(username: String) async {
+        backendSyncState = .syncing
+        let deviceId = deviceIdentityStore.currentDeviceId()
+
+        do {
+            try await identitySyncService.sync(username: username, deviceId: deviceId)
+            backendSyncState = .synced
+        } catch {
+            backendSyncState = .failed(message: error.localizedDescription)
+        }
     }
 }

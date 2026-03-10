@@ -39,7 +39,7 @@ struct AppRootView: View {
         _trustCenter = StateObject(wrappedValue: trustCenter)
         
         let environment = AppEnvironment()
-        _auth = StateObject(wrappedValue: AuthStore(authRepo: environment.authRepo))
+        _auth = StateObject(wrappedValue: AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
         _environment = StateObject(wrappedValue: environment)
     }
 
