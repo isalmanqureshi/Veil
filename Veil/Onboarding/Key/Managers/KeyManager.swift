@@ -173,6 +173,15 @@ final class KeyManager {
         return PreKeyBundle(identity: identity, signedPreKey: spk, oneTimePreKeys: otks)
     }
 
+
+    func currentSignedPreKey() throws -> SignedPreKey? {
+        try loadSignedPreKey()
+    }
+
+    func oneTimePreKeyCount() throws -> Int {
+        try loadOneTimePreKeys().count
+    }
+
     // MARK: - Internal loads
 
     private func loadIdentitySigningPrivateKey() throws -> Curve25519.Signing.PrivateKey {

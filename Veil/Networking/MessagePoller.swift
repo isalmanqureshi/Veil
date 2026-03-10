@@ -1,13 +1,18 @@
 import Foundation
+import Combine
 
-final class MessagePoller {
+@MainActor
+final class MessagePoller: ObservableObject {
+    @Published private(set) var isRunning = false
+    @Published private(set) var lastPollAt: Date?
+    @Published private(set) var lastError: String?
+
     private let messagesService: MessagesService
     private let chatRepository: NetworkChatRepository
     private let requestsRepository: NetworkMessageRequestsRepository
     private let authContext: LocalAuthContext
     private let intervalNanoseconds: UInt64
 
-    private let lock = NSLock()
     private var task: Task<Void, Never>?
 
     init(
@@ -25,45 +30,65 @@ final class MessagePoller {
     }
 
     func start() {
-        lock.withLock {
-            guard task == nil else { return }
-            task = Task { [messagesService, chatRepository, requestsRepository, intervalNanoseconds, authContext] in
-                var backoffNanoseconds = intervalNanoseconds
+        guard task == nil else { return }
+        isRunning = true
 
-                while !Task.isCancelled {
-                    guard let username = authContext.currentUsername() else {
-                        try? await Task.sleep(nanoseconds: intervalNanoseconds)
-                        continue
-                    }
+        task = Task { [messagesService, chatRepository, requestsRepository, intervalNanoseconds, authContext] in
+            var backoffNanoseconds = intervalNanoseconds
 
-                    let deviceId = authContext.currentDeviceId()
-
+            while !Task.isCancelled {
+                guard let username = authContext.currentUsername() else {
                     do {
-                        async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
-                        async let refreshRequests = requestsRepository.refresh()
-                        let envelopes = try await inboxResponse.messages
-                        _ = await refreshRequests
-
-                        let ackIds = chatRepository.ingestIncoming(envelopes)
-                        if !ackIds.isEmpty {
-                            _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
-                        }
-
-                        backoffNanoseconds = intervalNanoseconds
+                        try await Task.sleep(nanoseconds: intervalNanoseconds)
                     } catch {
-                        backoffNanoseconds = min(backoffNanoseconds * 2, 30_000_000_000)
+                        break
+                    }
+                    continue
+                }
+
+                let deviceId = authContext.currentDeviceId()
+
+                do {
+                    async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
+                    async let refreshRequests = requestsRepository.refresh()
+
+                    let envelopes = try await inboxResponse.messages
+                    _ = await refreshRequests
+
+                    let ackIds = chatRepository.ingestIncoming(envelopes)
+                    if !ackIds.isEmpty {
+                        _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
                     }
 
-                    try? await Task.sleep(nanoseconds: backoffNanoseconds)
+                    lastPollAt = Date()
+                    lastError = nil
+                    backoffNanoseconds = intervalNanoseconds
+                } catch is CancellationError {
+                    break
+                } catch {
+                    lastError = error.localizedDescription
+                    backoffNanoseconds = min(intervalNanoseconds * 2, 30_000_000_000)
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: backoffNanoseconds)
+                } catch {
+                    break
                 }
             }
+
+            isRunning = false
         }
     }
 
     func stop() {
-        lock.withLock {
-            task?.cancel()
-            task = nil
-        }
+        task?.cancel()
+        task = nil
+        isRunning = false
+    }
+
+    func restartIfNeeded() {
+        stop()
+        start()
     }
 }

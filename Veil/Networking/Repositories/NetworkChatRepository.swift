@@ -12,6 +12,7 @@ final class NetworkChatRepository: ChatRepository {
     private let lock = NSLock()
     private var store: [String: [ChatMessage]] = [:]
     private var threadIdByUsername: [String: UUID] = [:]
+    private var seenServerMessageIds: Set<String> = []
 
     init(
         crypto: CryptoService,
@@ -94,6 +95,11 @@ final class NetworkChatRepository: ChatRepository {
         var ackIds: [String] = []
 
         for envelope in envelopes {
+            if lock.withLock({ seenServerMessageIds.contains(envelope.serverMessageId) }) {
+                ackIds.append(envelope.serverMessageId)
+                continue
+            }
+
             guard var session = sessionManager.session(for: envelope.fromUsername) else { continue }
             guard let plaintext = try? crypto.decrypt(ciphertext: envelope.payloadB64, for: envelope.fromUsername, session: &session) else { continue }
             sessionManager.saveSession(session)
@@ -109,16 +115,27 @@ final class NetworkChatRepository: ChatRepository {
                 state: .sent
             )
 
-            append(message)
+            append(message, serverMessageId: envelope.serverMessageId)
             ackIds.append(envelope.serverMessageId)
         }
 
-        return ackIds
+        return Array(Set(ackIds))
     }
 
     private func append(_ message: ChatMessage) {
         lock.withLock {
             store[message.chatUsername, default: []].append(message)
+        }
+    }
+
+    private func append(_ message: ChatMessage, serverMessageId: String) {
+        lock.withLock {
+            guard !seenServerMessageIds.contains(serverMessageId) else { return }
+            store[message.chatUsername, default: []].append(message)
+            seenServerMessageIds.insert(serverMessageId)
+            if seenServerMessageIds.count > 2_000 {
+                seenServerMessageIds = Set(seenServerMessageIds.suffix(1_000))
+            }
         }
     }
 
