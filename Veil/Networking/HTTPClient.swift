@@ -7,20 +7,23 @@ enum HTTPMethod: String {
     case delete = "DELETE"
 }
 
-enum HTTPClientError: Error {
-    case invalidResponse
-    case statusCode(Int, Data)
-}
-
 final class HTTPClient {
     private let session: URLSession
     private let config: BackendConfig
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init(config: BackendConfig, session: URLSession = .shared) {
+    init(config: BackendConfig, session: URLSession? = nil) {
         self.config = config
-        self.session = session
+
+        if let session {
+            self.session = session
+        } else {
+            let sessionConfig = URLSessionConfiguration.default
+            sessionConfig.timeoutIntervalForRequest = config.timeout
+            sessionConfig.timeoutIntervalForResource = config.timeout
+            self.session = URLSession(configuration: sessionConfig)
+        }
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -31,49 +34,50 @@ final class HTTPClient {
         self.decoder = decoder
     }
 
-    func request<T: Decodable, Body: Encodable>(
-        path: String,
-        method: HTTPMethod,
-        body: Body? = nil,
-        headers: [String: String] = [:]
-    ) async throws -> T {
-        let request = try buildRequest(path: path, method: method, body: body, headers: headers)
-        let (data, response) = try await perform(request)
+    func get<T: Decodable>(path: String, queryItems: [URLQueryItem] = []) async throws -> T {
+        let request = try buildRequest(path: path, method: .get, queryItems: queryItems, body: Optional<EmptyBody>.none)
+        let (data, _) = try await perform(request)
+        return try decode(T.self, from: data)
+    }
 
+    func post<T: Decodable, Body: Encodable>(path: String, body: Body) async throws -> T {
+        let request = try buildRequest(path: path, method: .post, queryItems: [], body: body)
+        let (data, _) = try await perform(request)
+        return try decode(T.self, from: data)
+    }
+
+    func post<Body: Encodable>(path: String, body: Body) async throws {
+        let request = try buildRequest(path: path, method: .post, queryItems: [], body: body)
+        _ = try await perform(request)
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
-            #if DEBUG
-            debugPrint("⬇️ decode error:", error)
-            #endif
-            throw error
+            throw APIError.decoding(error)
         }
-    }
-
-    func send<Body: Encodable>(
-        path: String,
-        method: HTTPMethod,
-        body: Body? = nil,
-        headers: [String: String] = [:]
-    ) async throws {
-        let request = try buildRequest(path: path, method: method, body: body, headers: headers)
-        _ = try await perform(request)
     }
 
     private func buildRequest<Body: Encodable>(
         path: String,
         method: HTTPMethod,
-        body: Body?,
-        headers: [String: String]
+        queryItems: [URLQueryItem],
+        body: Body?
     ) throws -> URLRequest {
-        let url = config.baseURL.appending(path: path)
+        guard var components = URLComponents(url: config.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+
+        guard let url = components.url else { throw APIError.invalidURL }
+
         var request = URLRequest(url: url, timeoutInterval: config.timeout)
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        headers.forEach { key, value in
-            request.setValue(value, forHTTPHeaderField: key)
-        }
 
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -88,38 +92,62 @@ final class HTTPClient {
     }
 
     private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await session.data(for: request)
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
 
-        guard let http = response as? HTTPURLResponse else {
-            throw HTTPClientError.invalidResponse
+            #if DEBUG
+            logResponse(http, data: data)
+            #endif
+
+            guard (200...299).contains(http.statusCode) else {
+                throw APIError.server(statusCode: http.statusCode, message: String(data: data, encoding: .utf8))
+            }
+
+            return (data, http)
+        } catch let error as APIError {
+            throw error
+        } catch let error as URLError where error.code == .timedOut {
+            throw APIError.timeout
+        } catch {
+            throw APIError.transport(error)
         }
-
-        #if DEBUG
-        logResponse(http, data: data)
-        #endif
-
-        guard (200...299).contains(http.statusCode) else {
-            throw HTTPClientError.statusCode(http.statusCode, data)
-        }
-
-        return (data, http)
     }
 
     #if DEBUG
     private func logRequest(_ request: URLRequest) {
-        let body = request.httpBody.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        debugPrint("➡️ [HTTP] \(request.httpMethod ?? "-") \(request.url?.absoluteString ?? "-")")
-        if !body.isEmpty {
-            debugPrint("➡️ body:", body)
+        print("➡️ [HTTP] \(request.httpMethod ?? "-") \(request.url?.absoluteString ?? "-")")
+        guard let body = request.httpBody,
+              var json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return }
+
+        if json["payloadB64"] != nil {
+            json["payloadB64"] = "<redacted>"
+        }
+        if json["previewCiphertext"] != nil {
+            json["previewCiphertext"] = "<redacted>"
+        }
+
+        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
+           let printable = String(data: data, encoding: .utf8) {
+            print("➡️ body: \(printable)")
         }
     }
 
     private func logResponse(_ response: HTTPURLResponse, data: Data) {
-        let body = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-        debugPrint("⬅️ [HTTP] status=\(response.statusCode) url=\(response.url?.absoluteString ?? "-")")
-        if !body.isEmpty {
-            debugPrint("⬅️ body:", body)
+        print("⬅️ [HTTP] status=\(response.statusCode) url=\(response.url?.absoluteString ?? "-")")
+        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+        if json["payloadB64"] != nil {
+            json["payloadB64"] = "<redacted>"
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
+           let printable = String(data: data, encoding: .utf8) {
+            print("⬅️ body: \(printable)")
         }
     }
     #endif
 }
+
+private struct EmptyBody: Encodable {}

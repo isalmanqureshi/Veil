@@ -1,42 +1,60 @@
 import Foundation
 
 final class MessagePoller {
-    private let messageService: MessageService
+    private let messagesService: MessagesService
     private let chatRepository: NetworkChatRepository
     private let requestsRepository: NetworkMessageRequestsRepository
+    private let authContext: LocalAuthContext
     private let intervalNanoseconds: UInt64
 
     private let lock = NSLock()
     private var task: Task<Void, Never>?
 
     init(
-        messageService: MessageService,
+        messagesService: MessagesService,
         chatRepository: NetworkChatRepository,
         requestsRepository: NetworkMessageRequestsRepository,
-        intervalSeconds: TimeInterval = 3
+        pollIntervalSeconds: TimeInterval,
+        authContext: LocalAuthContext = LocalAuthContext()
     ) {
-        self.messageService = messageService
+        self.messagesService = messagesService
         self.chatRepository = chatRepository
         self.requestsRepository = requestsRepository
-        self.intervalNanoseconds = UInt64(max(intervalSeconds, 2) * 1_000_000_000)
+        self.intervalNanoseconds = UInt64(max(pollIntervalSeconds, 2) * 1_000_000_000)
+        self.authContext = authContext
     }
 
     func start() {
         lock.withLock {
             guard task == nil else { return }
-            task = Task { [messageService, chatRepository, requestsRepository, intervalNanoseconds] in
+            task = Task { [messagesService, chatRepository, requestsRepository, intervalNanoseconds, authContext] in
+                var backoffNanoseconds = intervalNanoseconds
+
                 while !Task.isCancelled {
-                    do {
-                        async let inbox = messageService.pollInbox()
-                        async let requests = requestsRepository.refresh()
-                        let envelopes = try await inbox
-                        _ = await requests
-                        chatRepository.ingestIncoming(envelopes)
-                    } catch {
-                        // swallow errors for calm offline behavior
+                    guard let username = authContext.currentUsername() else {
+                        try? await Task.sleep(nanoseconds: intervalNanoseconds)
+                        continue
                     }
 
-                    try? await Task.sleep(nanoseconds: intervalNanoseconds)
+                    let deviceId = authContext.currentDeviceId()
+
+                    do {
+                        async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
+                        async let refreshRequests = requestsRepository.refresh()
+                        let envelopes = try await inboxResponse.messages
+                        _ = await refreshRequests
+
+                        let ackIds = chatRepository.ingestIncoming(envelopes)
+                        if !ackIds.isEmpty {
+                            _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
+                        }
+
+                        backoffNanoseconds = intervalNanoseconds
+                    } catch {
+                        backoffNanoseconds = min(backoffNanoseconds * 2, 30_000_000_000)
+                    }
+
+                    try? await Task.sleep(nanoseconds: backoffNanoseconds)
                 }
             }
         }
