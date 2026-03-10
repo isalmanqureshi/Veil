@@ -70,6 +70,12 @@ struct AppRootView: View {
                 return false
             }())
         }
+
+        .onChange(of: auth.backendSyncState) { _, newState in
+            if case .synced = newState {
+                environment.syncPreKeysIfNeeded()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             environment.setAppActive(newPhase == .active)
         }

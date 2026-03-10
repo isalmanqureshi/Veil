@@ -23,6 +23,7 @@ final class AppEnvironment: ObservableObject {
     let requestsService: RequestsService?
 
     private let poller: MessagePoller?
+    private let preKeySyncManager: PreKeySyncManager?
     private var isAppActive = false
     private var isSignedIn = false
 
@@ -56,6 +57,7 @@ final class AppEnvironment: ObservableObject {
             self.chatRepo = chat
             self.requestsRepo = MockMessageRequestsRepository(chatRepo: chat)
             self.poller = nil
+            self.preKeySyncManager = nil
         } else {
             let httpClient = HTTPClient(config: config)
             let usersService = NetworkUsersService(httpClient: httpClient)
@@ -82,6 +84,13 @@ final class AppEnvironment: ObservableObject {
                 requestsRepository: requestsRepo,
                 pollIntervalSeconds: config.pollIntervalSeconds
             )
+            self.preKeySyncManager = PreKeySyncManager(
+                preKeysService: preKeysService,
+                maintenanceIntervalSeconds: config.preKeyMaintenanceIntervalSeconds,
+                maxSignedPreKeyAgeDays: config.signedPreKeyMaxAgeDays,
+                oneTimePreKeyMinimumCount: config.oneTimePreKeyMinimumCount,
+                oneTimePreKeyTargetCount: config.oneTimePreKeyTargetCount
+            )
         }
     }
 
@@ -95,12 +104,23 @@ final class AppEnvironment: ObservableObject {
         updatePollingState()
     }
 
+
+    func syncPreKeysIfNeeded() {
+        Task {
+            await preKeySyncManager?.syncIfNeeded()
+        }
+    }
+
     private func updatePollingState() {
-        guard let poller else { return }
         if isSignedIn && isAppActive {
-            poller.start()
+            poller?.start()
+            preKeySyncManager?.startMaintenance()
+            Task {
+                await preKeySyncManager?.syncIfNeeded()
+            }
         } else {
-            poller.stop()
+            poller?.stop()
+            preKeySyncManager?.stopMaintenance()
         }
     }
 }
