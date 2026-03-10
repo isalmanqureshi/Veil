@@ -6,6 +6,7 @@
 //
 import SwiftUI
 
+@MainActor
 final class AppEnvironment: ObservableObject {
 
     let config: BackendConfig
@@ -16,6 +17,8 @@ final class AppEnvironment: ObservableObject {
     let trustRepo: TrustRepository
     let chatRepo: ChatRepository
     let requestsRepo: MessageRequestsRepository
+    let purchaseProvider: PurchaseProvider
+    let entitlements: EntitlementsStore
 
     let httpClient: HTTPClient?
     let preKeyService: PreKeyService?

@@ -16,6 +16,7 @@ enum AppRoute: Hashable {
     case chat(username: String)
     case status
     case privacy
+    case pricing
     case groupCreation
     case requestDetails(id: UUID)
     case trustWarning(title: String, message: String)
@@ -53,6 +54,7 @@ struct AppRootView: View {
         .environmentObject(environment)
         .environmentObject(trustCenter)
         .environmentObject(auth)
+        .environmentObject(environment.entitlements)
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
             environment.setAppActive(true)
@@ -114,6 +116,9 @@ struct AppRootView: View {
 
         case .privacy:
             PrivacyDashboardView()
+
+        case .pricing:
+            PricingView()
 
         case .groupCreation:
             GroupCreationView()
