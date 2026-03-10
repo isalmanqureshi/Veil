@@ -24,6 +24,11 @@ protocol RequestsService {
     func report(_ request: ReportRequestRequestDTO) async throws -> ReportRequestResponseDTO
 }
 
+
+protocol DevicePushTokenService {
+    func registerToken(_ request: RegisterPushTokenRequestDTO) async throws -> RegisterPushTokenResponseDTO
+}
+
 final class NetworkUsersService: UsersService {
     private let httpClient: HTTPClient
 
@@ -104,5 +109,24 @@ final class NetworkRequestsService: RequestsService {
 
     func report(_ request: ReportRequestRequestDTO) async throws -> ReportRequestResponseDTO {
         try await httpClient.post(path: "v1/requests/report", body: request)
+    }
+}
+
+
+final class NetworkDevicePushTokenService: DevicePushTokenService {
+    private let httpClient: HTTPClient
+
+    init(httpClient: HTTPClient) {
+        self.httpClient = httpClient
+    }
+
+    func registerToken(_ request: RegisterPushTokenRequestDTO) async throws -> RegisterPushTokenResponseDTO {
+        try await httpClient.post(path: "v1/push/register", body: request)
+    }
+}
+
+final class NoopDevicePushTokenService: DevicePushTokenService {
+    func registerToken(_ request: RegisterPushTokenRequestDTO) async throws -> RegisterPushTokenResponseDTO {
+        RegisterPushTokenResponseDTO(accepted: false)
     }
 }
