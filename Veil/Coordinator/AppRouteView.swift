@@ -24,6 +24,8 @@ enum AppRoute: Hashable {
 
 struct AppRootView: View {
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @StateObject private var coordinator: AppCoordinator
     @StateObject private var environment: AppEnvironment
     @StateObject private var trustCenter: TrustCenter
@@ -55,9 +57,21 @@ struct AppRootView: View {
         .environmentObject(environment.entitlements)
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
+            environment.setAppActive(true)
+            environment.setSignedIn({
+                if case .signedIn = auth.state { return true }
+                return false
+            }())
         }
-        .onChange(of: auth.state) { _, _ in
+        .onChange(of: auth.state) { _, newState in
             coordinator.path.removeAll()
+            environment.setSignedIn({
+                if case .signedIn = newState { return true }
+                return false
+            }())
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            environment.setAppActive(newPhase == .active)
         }
     }
 
