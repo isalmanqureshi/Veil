@@ -73,6 +73,7 @@ final class SessionManager {
         let session = SessionState(
             username: remote.username,
             createdAt: Date(),
+            remoteOneTimePreKeyId: remote.oneTimePreKeyId,
             rootKey: rootKey,
             sendingChainKey: ckSend,
             receivingChainKey: ckRecv,
