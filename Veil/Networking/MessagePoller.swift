@@ -33,35 +33,12 @@ final class MessagePoller: ObservableObject {
         guard task == nil else { return }
         isRunning = true
 
-        task = Task { [messagesService, chatRepository, requestsRepository, intervalNanoseconds, authContext] in
+        task = Task {
             var backoffNanoseconds = intervalNanoseconds
 
             while !Task.isCancelled {
-                guard let username = authContext.currentUsername() else {
-                    do {
-                        try await Task.sleep(nanoseconds: intervalNanoseconds)
-                    } catch {
-                        break
-                    }
-                    continue
-                }
-
-                let deviceId = authContext.currentDeviceId()
-
                 do {
-                    async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
-                    async let refreshRequests = requestsRepository.refresh()
-
-                    let envelopes = try await inboxResponse.messages
-                    _ = await refreshRequests
-
-                    let ackIds = chatRepository.ingestIncoming(envelopes)
-                    if !ackIds.isEmpty {
-                        _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
-                    }
-
-                    lastPollAt = Date()
-                    lastError = nil
+                    _ = try await self.performPollCycle()
                     backoffNanoseconds = intervalNanoseconds
                 } catch is CancellationError {
                     break
@@ -87,8 +64,40 @@ final class MessagePoller: ObservableObject {
         isRunning = false
     }
 
+    func refreshNow() async -> Bool {
+        do {
+            _ = try await performPollCycle()
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
     func restartIfNeeded() {
         stop()
         start()
+    }
+
+    private func performPollCycle() async throws -> Bool {
+        guard let username = authContext.currentUsername() else {
+            return false
+        }
+
+        let deviceId = authContext.currentDeviceId()
+        async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
+        async let refreshRequests = requestsRepository.refresh()
+
+        let envelopes = try await inboxResponse.messages
+        _ = await refreshRequests
+
+        let ackIds = chatRepository.ingestIncoming(envelopes)
+        if !ackIds.isEmpty {
+            _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
+        }
+
+        lastPollAt = Date()
+        lastError = nil
+        return !envelopes.isEmpty
     }
 }

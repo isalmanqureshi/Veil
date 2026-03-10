@@ -140,6 +140,17 @@ struct ReportRequestResponseDTO: Codable {
     let reported: Bool
 }
 
+struct RegisterPushTokenRequestDTO: Codable {
+    let username: String
+    let deviceId: String
+    let token: String
+    let platform: String
+}
+
+struct RegisterPushTokenResponseDTO: Codable {
+    let accepted: Bool
+}
+
 extension RemotePreKeyBundleDTO {
     func toDomain() throws -> RemotePreKeyBundle {
         RemotePreKeyBundle(
