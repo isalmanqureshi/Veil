@@ -146,7 +146,7 @@ struct RecoveryKeyView: View {
 
 #Preview {
     let environment = AppEnvironment()
-    let auth = AuthStore(authRepo: environment.authRepo)
+    let auth = AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore)
     auth.startOnboarding()
     auth.onboardingUsername = "preview_user"
     auth.prepareRecoveryKeyIfNeeded()
