@@ -55,3 +55,7 @@ Outgoing send path lazily establishes session by fetching remote prekeys (`PreKe
 - `Veil/Chats/Repository/ChatRepository.swift`
 - `Veil/Networking/Repositories/NetworkChatRepository.swift`
 - `Veil/Networking/DTO/WireDTOs.swift`
+
+## Messaging diagrams
+See `docs/DIAGRAMS.md` for message send/receive pipelines, message requests flow, and polling + push hybrid delivery diagrams.
+
