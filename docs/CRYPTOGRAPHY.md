@@ -74,3 +74,7 @@ This is explicitly a staged design toward fuller ratcheting.
 - `Veil/Onboarding/Key/Managers/SessionStore.swift`
 - `Veil/Onboarding/Key/Models/KeyModels.swift`
 - `Veil/CryptoService.swift`
+
+## Cryptography diagrams
+See `docs/DIAGRAMS.md` for the X3DH-style session establishment, prekey lifecycle, trust verification (WIP), attachment encryption pipeline (WIP), and cryptographic boundary diagram.
+

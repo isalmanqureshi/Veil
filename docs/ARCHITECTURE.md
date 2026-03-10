@@ -81,3 +81,7 @@ Backend API
 - `Veil/Coordinator/AppRouteView.swift`
 - `Veil/Chats/ViewModel/ChatViewModel.swift`
 - `Veil/Inbox/ViewModel/InboxViewModel.swift`
+
+## Architecture diagrams
+See `docs/DIAGRAMS.md` for visual system maps, navigation architecture, backend architecture, polling + push delivery, and security boundaries.
+
