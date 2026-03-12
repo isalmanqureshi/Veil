@@ -11,8 +11,10 @@ struct PrivacyDashboardView: View {
 
     @EnvironmentObject private var coordinator: AppCoordinator
     @EnvironmentObject private var entitlements: EntitlementsStore
+    @EnvironmentObject private var auth: AuthStore
 
     @State private var requiresPoW = false
+    @State private var showSignOutConfirmation = false
 
     var body: some View {
         List {
@@ -71,6 +73,22 @@ struct PrivacyDashboardView: View {
                 Text("Last security check: Today")
                     .foregroundStyle(.secondary)
             }
+
+            Section("Account") {
+                Button(role: .destructive) {
+                    showSignOutConfirmation = true
+                } label: {
+                    Text("Sign Out")
+                }
+            }
+        }
+        .confirmationDialog("Sign out of Veil?", isPresented: $showSignOutConfirmation, titleVisibility: .visible) {
+            Button("Sign Out", role: .destructive) {
+                auth.signOut()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Sign out of this device? Your local session will be removed from this device.")
         }
         .navigationTitle("Privacy")
     }
@@ -78,7 +96,10 @@ struct PrivacyDashboardView: View {
 
 
 #Preview {
-    PrivacyDashboardView()
+    let environment = AppEnvironment()
+
+    return PrivacyDashboardView()
         .environmentObject(AppCoordinator())
         .environmentObject(EntitlementsStore(purchaseProvider: MockPurchaseProvider()))
+        .environmentObject(AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
 }

@@ -64,7 +64,9 @@ struct AppRootView: View {
             }())
         }
         .onChange(of: auth.state) { _, newState in
-            coordinator.path.removeAll()
+            if case .signedOut = newState {
+                coordinator.path.removeAll()
+            }
             environment.setSignedIn({
                 if case .signedIn = newState { return true }
                 return false
