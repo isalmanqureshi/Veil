@@ -1,6 +1,6 @@
 # Veil System Diagrams
 
-This document centralizes architecture and flow diagrams for the Veil iOS app using Mermaid. Diagrams are based on the current repository implementation (SwiftUI app, repository/service networking, X3DH-style session bootstrap, polling + push refresh).
+This document centralizes architecture and flow diagrams for the Veil iOS app using Mermaid. Diagrams are based on the current repository implementation (SwiftUI app, repository/service networking, X3DH-style session bootstrap, password + recovery auth, polling + push refresh).
 
 ---
 
@@ -97,6 +97,7 @@ flowchart TD
   Nav --> Root{AuthStore.state}
   Root -->|signedOut| Welcome[WelcomeView]
   Root -->|onboarding| Username[UsernameCreationView]
+  Root -->|requiresPasswordReset| ResetPassword[ResetPasswordView]
   Root -->|signedIn| Inbox[InboxView]
 
   App --> Coord[AppCoordinator]
@@ -105,6 +106,8 @@ flowchart TD
 
   Dest --> Login[LoginView]
   Dest --> Recovery[RecoveryKeyView]
+  Dest --> RecoveryLogin[RecoveryLoginView]
+  Dest --> Reset[ResetPasswordView]
   Dest --> Chat[ChatView]
   Dest --> RequestDetails[RequestDetailsView]
   Dest --> TrustWarn[TrustWarningView]
@@ -116,42 +119,68 @@ flowchart TD
 
 **Description**
 
-Onboarding starts in `WelcomeView`, proceeds through username + recovery key setup, bootstraps local key material, then syncs identity/prekeys to backend via `IdentitySyncService`.
+The auth model supports password-first sign in with recovery-key fallback. Onboarding generates a recovery seed, bootstraps key material, sets password verifier, and syncs identity/prekeys.
 
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant W as WelcomeView
-  participant UC as UsernameCreationView
-  participant RK as RecoveryKeyView
   participant AS as AuthStore
   participant AR as AuthRepository
+  participant PM as PasswordManager
   participant KM as KeyManager
   participant IS as IdentitySyncService
   participant BE as Backend
 
-  U->>W: Tap "Create Account"
-  W->>AS: startOnboarding()
-  U->>UC: Enter username
-  UC->>AS: onboardingUsername = value
-  U->>RK: Continue
-  RK->>AS: prepareRecoveryKeyIfNeeded()
+  U->>AS: startOnboarding()
+  U->>AS: prepareRecoveryKeyIfNeeded()
   AS->>AR: prepareRecoveryKey()
   AR-->>AS: recoveryKey + seed
-  U->>RK: Confirm + Finish
-  RK->>AS: finishOnboarding()
-  AS->>AR: createUser(username, seed, recoveryKey)
+  U->>AS: finishOnboarding(username, password)
+  AS->>AR: createUser(...)
   AS->>KM: bootstrapIdentityIfNeeded(seed)
-  AS->>KM: makePreKeyBundle(oneTimeCount: 20)
+  AS->>PM: setPassword(password)
   AS->>IS: sync(username, deviceId)
-  IS->>BE: POST /v1/users/register
-  IS->>BE: POST /v1/prekeys/publish
-  BE-->>AS: synced
+  IS->>BE: POST /v1/users/register + /v1/prekeys/publish
+  AS-->>U: state = .signedIn
+
+  U->>AS: login(username, password)
+  AS->>PM: verifyPassword(password)
+  AS-->>U: state = .signedIn
+
+  U->>AS: recoverAccount(username, recoveryKey)
+  AS->>AR: restoreUser(...)
+  AS-->>U: state = .requiresPasswordReset
+  U->>AS: resetPassword(newPassword)
+  AS->>PM: setPassword(newPassword)
+  AS-->>U: state = .signedIn
 ```
 
 ---
 
-## 4) X3DH-Style Session Establishment
+## 4) Account Controls: Sign Out vs Remove Account
+
+**Description**
+
+Settings exposes separate controls for ending a session versus destructive local-device wipe.
+
+```mermaid
+flowchart TD
+  Privacy[PrivacyDashboardView] --> SignOut[Sign Out]
+  Privacy --> Erase[Remove Account From Device]
+
+  SignOut --> S1[AuthStore.signOut()]
+  S1 --> S2[Clear session flag + volatile auth state]
+  S2 --> S3[state = .signedOut]
+
+  Erase --> E1[AuthStore.eraseLocalData()]
+  E1 --> E2[LocalDataWiper.wipeAllLocalData()]
+  E2 --> E3[authRepo.clear + password clear + key erase + push token clear]
+  E3 --> E4[AuthStore.signOut() -> state = .signedOut]
+```
+
+---
+
+## 5) X3DH-Style Session Establishment
 
 **Description**
 
@@ -184,7 +213,7 @@ sequenceDiagram
 
 ---
 
-## 5) Message Send Pipeline
+## 6) Message Send Pipeline
 
 **Description**
 
@@ -209,7 +238,7 @@ flowchart TD
 
 ---
 
-## 6) Message Receive Pipeline (Polling)
+## 7) Message Receive Pipeline (Polling)
 
 **Description**
 
@@ -244,7 +273,7 @@ sequenceDiagram
 
 ---
 
-## 7) Message Requests Flow (Abuse-Resistant)
+## 8) Message Requests Flow (Abuse-Resistant)
 
 **Description**
 
@@ -273,7 +302,7 @@ flowchart TD
 
 ---
 
-## 8) PreKey Management Lifecycle
+## 9) PreKey Management Lifecycle
 
 **Description**
 

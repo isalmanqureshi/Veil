@@ -1,5 +1,15 @@
 # Inbox and Requests
 
+## Status
+- Implemented:
+  - Segmented inbox (Chats/Requests) with request detail actions (accept/ignore/block/report).
+  - Request signal rendering (`RequestSignalsFormatter`) and backend action wiring.
+- WIP:
+  - More advanced moderation feedback loops and richer request context.
+- Planned:
+  - Expanded request triage UX and policy-driven inbox automation.
+
+
 ## Inbox architecture
 Primary inbox surface is segmented:
 - **Chats** tab (`ChatThread` list)

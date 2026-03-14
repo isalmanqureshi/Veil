@@ -1,5 +1,14 @@
 # Pricing and Business Model
 
+## Status
+- Implemented:
+  - StoreKit product fetch/purchase/restore path and local entitlement persistence.
+- WIP:
+  - Deep entitlement gating across non-pricing features.
+- Planned:
+  - Production-grade packaging and entitlement-driven feature rollout policy.
+
+
 ## Product tiers
 ### Free tier
 Default app usage without subscription. App remains usable if pricing fetch fails.

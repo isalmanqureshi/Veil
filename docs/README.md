@@ -1,7 +1,7 @@
 # Veil iOS Technical Documentation
 
 ## What Veil is
-Veil is a SwiftUI iOS messaging application focused on private, username-based communication. Accounts are created and restored via a recovery key-derived seed rather than phone number or email identity.
+Veil is a SwiftUI iOS messaging application focused on private, username-based communication. Accounts are created with a recovery key-derived seed and support password sign-in on-device.
 
 ## Mission
 **Private messaging without phone numbers.**
@@ -10,12 +10,18 @@ Core UX copy in the app reinforces this model:
 - "Private by default. Invisible by design."
 - "No phone number. No ads. No tracking."
 
-## Key privacy principles
-- Username-first identity (no phone/email authentication).
-- Locally controlled cryptographic identity generated from recovery key seed.
-- End-to-end encrypted message payloads (`payloadB64`) with minimal server-visible metadata.
-- Device-local key material storage in Keychain.
-- Trust and abuse interfaces that communicate risk with restrained metadata exposure.
+## Status snapshot
+- Implemented:
+  - Auth-state root navigation (`AppRootView`) with coordinator path reset on auth transitions.
+  - Username onboarding + recovery key generation + password sign-in.
+  - Separate account controls for **Sign Out** vs **Remove Account From Device**.
+  - X3DH-style session bootstrap, encrypted payload transport, inbox/requests flow, and polling with push-refresh bridge.
+- WIP:
+  - Full Double Ratchet and persistent encrypted message/session storage.
+  - Attachment production pipeline and deeper entitlement-based feature gating.
+  - Full trust center product surface and advanced abuse enforcement.
+- Planned:
+  - Broader device management UX and push-first delivery hardening.
 
 ## High-level architecture
 
@@ -50,18 +56,6 @@ Core UX copy in the app reinforces this model:
 │ User registration, prekeys, message queue, request moderation     │
 └───────────────────────────────────────────────────────────────────┘
 ```
-
-## Project goals
-- Privacy-first direct messaging.
-- Minimal, understandable architecture for iterative hardening.
-- Progressive migration from mock mode to full network backend mode.
-- UX-safe anti-abuse and trust warning primitives.
-
-## Security philosophy
-- Make identity deterministic from a seed that users control.
-- Keep key derivation and E2EE operations on-device.
-- Treat transport as untrusted; only ciphertext leaves device for messages.
-- Maintain forward-leaning primitives (X3DH bootstrap, chain KDF) while clearly marking partial implementations as **WIP**.
 
 ## Technology stack
 - **Language/UI**: Swift, SwiftUI

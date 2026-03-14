@@ -1,5 +1,16 @@
 # Messaging System
 
+## Status
+- Implemented:
+  - Chat send/receive with optimistic UI, retry, and encrypted network envelopes.
+  - Inbox ingest + ack pipeline through `NetworkChatRepository` and `MessagePoller`.
+- WIP:
+  - Persistent encrypted message store.
+  - Full Double Ratchet evolution.
+- Planned:
+  - Richer delivery receipts and durable sync state.
+
+
 ## Core components
 - `ChatView` (UI)
 - `ChatViewModel` (send/retry/attachment UX state)

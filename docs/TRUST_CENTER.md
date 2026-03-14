@@ -1,5 +1,14 @@
 # Trust Center
 
+## Status
+- Implemented:
+  - Trust event model + warning route for non-info events.
+- WIP:
+  - Full Trust Center screen and stronger verification UX.
+- Planned:
+  - Identity fingerprint/QR verification workflows and richer trust analytics.
+
+
 ## Purpose
 Trust Center centralizes security-relevant events and routes user-visible warnings when severity requires attention.
 
