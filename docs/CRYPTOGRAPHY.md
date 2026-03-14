@@ -1,5 +1,15 @@
 # Cryptography
 
+## Status
+- Implemented:
+  - Deterministic identity derivation, X3DH-style initiator handshake, AES-GCM payload encryption.
+- WIP:
+  - Full Double Ratchet DH-step evolution.
+  - Persistent encrypted session/message storage.
+- Planned:
+  - Additional protocol hardening and external cryptographic review.
+
+
 ## Cryptographic primitives in code
 - **Ed25519**: identity signing keys + signed prekey signatures
 - **X25519**: identity agreement + prekeys + DH operations

@@ -182,6 +182,18 @@ final class KeyManager {
         try loadOneTimePreKeys().count
     }
 
+    func eraseLocalKeyMaterial() {
+        keychain.delete(service: service, account: acctIdentitySignPriv)
+        keychain.delete(service: service, account: acctIdentityAgreePriv)
+        keychain.delete(service: service, account: acctSignedPreKeyId)
+        keychain.delete(service: service, account: acctSignedPreKeyPriv)
+        keychain.delete(service: service, account: acctSignedPreKeySig)
+        keychain.delete(service: service, account: acctSignedPreKeyCreated)
+        keychain.delete(service: service, account: acctOneTimePreKeys)
+        keychain.deleteAll(service: service, accountPrefix: acctOneTimePreKeyPrivPrefix)
+        keychain.deleteAll(service: service, accountPrefix: acctOneTimePreKeyCreatedPrefix)
+    }
+
     // MARK: - Internal loads
 
     private func loadIdentitySigningPrivateKey() throws -> Curve25519.Signing.PrivateKey {
@@ -260,5 +272,4 @@ extension KeyManager {
                try loadIdentityAgreementPrivateKey()
     }
 }
-
 

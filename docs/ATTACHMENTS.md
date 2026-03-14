@@ -1,5 +1,14 @@
 # Attachments
 
+## Status
+- Implemented:
+  - Attachment service abstractions and UI-level send scaffolding.
+- WIP:
+  - Real metadata stripping, encryption/upload/download backend integration.
+- Planned:
+  - Production encrypted attachment pipeline with durable reference storage.
+
+
 ## Current architecture status
 Attachment support is scaffolded in `ChatViewModel` and `AttachmentService` abstractions, with mock behavior provided by `MockAttachmentService`.
 

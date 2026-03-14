@@ -5,6 +5,16 @@
 - Root composition: `AppRootView` in `Coordinator/AppRouteView.swift`.
 - Dependency root: `AppEnvironment`.
 
+## Status
+- Implemented:
+  - Single-root auth-state switching (`signedOut`, `onboarding`, `requiresPasswordReset`, `signedIn`).
+  - Coordinator-driven route navigation with a single `NavigationStack`.
+  - Environment-managed polling/prekey maintenance tied to auth + scene activity.
+- WIP:
+  - Persistent encrypted stores for chat/session state.
+- Planned:
+  - Expanded route set for richer account/device and trust-center product surfaces.
+
 ## Coordinator navigation
 Veil uses `NavigationStack` with app routes (`AppRoute` enum) and a shared `AppCoordinator`.
 
@@ -16,7 +26,16 @@ View intent -> coordinator.push(.route)
 
 Benefits:
 - Removes direct view-to-view coupling.
-- Central route vocabulary (`login`, `recoveryKey`, `chat(username:)`, `requestDetails`, etc.).
+- Central route vocabulary (`login`, `recoveryLogin`, `resetPassword`, `chat(username:)`, `requestDetails`, etc.).
+
+## Root navigation and auth state
+`AppRootView` chooses the root screen from `AuthStore.state`:
+- `.signedOut` -> `WelcomeView`
+- `.onboarding` -> `UsernameCreationView`
+- `.requiresPasswordReset` -> `ResetPasswordView`
+- `.signedIn` -> `InboxView`
+
+On auth state changes to `.signedOut`, `.signedIn`, or `.requiresPasswordReset`, `coordinator.path` is cleared to prevent stale back-navigation into prior flows.
 
 ## MVVM implementation
 Major UI modules use view model boundaries:
@@ -26,17 +45,17 @@ Major UI modules use view model boundaries:
 
 ### ViewModel boundary rule
 - Views own presentation and user interaction.
-- ViewModels own screen state, async orchestration, and repository calls.
+- ViewModels/stores own screen state, async orchestration, and repository calls.
 
 ## Dependency injection via `AppEnvironment`
-`AppEnvironment` creates and exposes all major dependencies as `@EnvironmentObject` and constructor-injected repositories/services.
+`AppEnvironment` creates and exposes major dependencies as `@EnvironmentObject` and constructor-injected repositories/services.
 
 Two modes:
 1. **Mock backend mode** (`useMockBackend = true`):
    - `MockAuthRepository`
    - `MockChatRepository`
    - `MockMessageRequestsRepository`
-   - No HTTP services/poller
+   - No HTTP services/poller/prekey maintenance loops
 2. **Network backend mode**:
    - `Network*Service` via `HTTPClient`
    - `NetworkChatRepository` + `NetworkMessageRequestsRepository`
@@ -79,9 +98,9 @@ Backend API
 - `Veil/AppEnvironment.swift`
 - `Veil/Coordinator/AppCoordinator.swift`
 - `Veil/Coordinator/AppRouteView.swift`
+- `Veil/Authentication/AuthStore.swift`
 - `Veil/Chats/ViewModel/ChatViewModel.swift`
 - `Veil/Inbox/ViewModel/InboxViewModel.swift`
 
 ## Architecture diagrams
 See `docs/DIAGRAMS.md` for visual system maps, navigation architecture, backend architecture, polling + push delivery, and security boundaries.
-

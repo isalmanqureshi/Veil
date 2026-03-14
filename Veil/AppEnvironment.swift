@@ -194,6 +194,12 @@ final class PushTokenStore {
         defaults.set(tokenHex, forKey: tokenSyncedKey)
         defaults.set(username, forKey: tokenSyncedUserKey)
     }
+
+    func clear() {
+        defaults.removeObject(forKey: tokenKey)
+        defaults.removeObject(forKey: tokenSyncedKey)
+        defaults.removeObject(forKey: tokenSyncedUserKey)
+    }
 }
 
 final class PushTokenSyncService {

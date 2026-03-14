@@ -15,6 +15,7 @@ struct PrivacyDashboardView: View {
 
     @State private var requiresPoW = false
     @State private var showSignOutConfirmation = false
+    @State private var showEraseDeviceDataConfirmation = false
 
     var body: some View {
         List {
@@ -75,10 +76,16 @@ struct PrivacyDashboardView: View {
             }
 
             Section("Account") {
-                Button(role: .destructive) {
+                Button {
                     showSignOutConfirmation = true
                 } label: {
                     Text("Sign Out")
+                }
+
+                Button(role: .destructive) {
+                    showEraseDeviceDataConfirmation = true
+                } label: {
+                    Text("Remove Account From Device")
                 }
             }
         }
@@ -88,7 +95,15 @@ struct PrivacyDashboardView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Sign out of this device? Your local session will be removed from this device.")
+            Text("You’ll return to the welcome screen on this device.")
+        }
+        .confirmationDialog("Remove account from this device?", isPresented: $showEraseDeviceDataConfirmation, titleVisibility: .visible) {
+            Button("Remove Account From Device", role: .destructive) {
+                auth.eraseLocalData()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will erase local messages, keys, and saved sign-in data from this device. This can’t be undone here.")
         }
         .navigationTitle("Privacy")
     }

@@ -1,11 +1,22 @@
 # Onboarding and Authentication
 
 ## Identity model
-Veil authenticates users by:
-- Username
-- Recovery key (encodes a 32-byte seed + checksum)
+Veil authentication is username-based and device-local.
 
-No phone number or email login is implemented.
+- Primary sign-in: **username + password**.
+- Recovery fallback: **username + recovery key**, then password reset.
+- No phone number or email auth is implemented.
+
+## Status
+- Implemented:
+  - Username onboarding with generated recovery key.
+  - Password-based sign in (`LoginView` -> `AuthStore.login`).
+  - Recovery-key restore path (`RecoveryLoginView` -> `AuthStore.recoverAccount`) with required password reset.
+  - Session-level sign out and destructive local erase as separate actions.
+- WIP:
+  - `NetworkAuthRepository` integration in `AppEnvironment` (currently local `MockAuthRepository` is used for identity persistence in both modes).
+- Planned:
+  - Multi-account/device management UX beyond the current single local account model.
 
 ## Flow overview
 
@@ -14,48 +25,79 @@ No phone number or email login is implemented.
 WelcomeView
   -> AuthStore.startOnboarding()
 UsernameCreationView
-  -> auth.onboardingUsername + prepareRecoveryKeyIfNeeded()
+  -> auth.setOnboardingUsername(...)
+  -> auth.prepareRecoveryKeyIfNeeded()
 RecoveryKeyView
   -> auth.finishOnboarding()
+  -> authRepo.createUser(username, seed, recoveryKey)
   -> KeyManager.bootstrapIdentityIfNeeded(seed)
-  -> generate prekey bundle
+  -> KeyManager.makePreKeyBundle(...)
+  -> PasswordManager.setPassword(...)
   -> state = .signedIn
 InboxView
 ```
 
-### Login flow
+### Password login flow
 ```text
-LoginView
-  -> auth.login(username, recoveryKey)
-  -> RecoveryKeyGenerator.decode(recoveryKey) -> seed
-  -> authRepo.restoreUser(...)
-  -> KeyManager.bootstrapIdentityIfNeeded(seed)
-  -> generate prekey bundle
+WelcomeView -> LoginView
+  -> auth.login(username, password)
+  -> authRepo.loadCurrentUser() + PasswordManager.verifyPassword(...)
   -> state = .signedIn
 InboxView
+```
+
+### Recovery flow (break-glass)
+```text
+WelcomeView -> RecoveryLoginView
+  -> auth.recoverAccount(username, recoveryKey)
+  -> RecoveryKeyGenerator.decode(recoveryKey)
+  -> authRepo.restoreUser(...)
+  -> KeyManager.bootstrapIdentityIfNeeded(seed)
+  -> state = .requiresPasswordReset
+ResetPasswordView
+  -> auth.resetPassword(newPassword)
+  -> PasswordManager.setPassword(...)
+  -> state = .signedIn
+```
+
+### Account/session controls flow
+```text
+PrivacyDashboardView
+  -> Sign Out
+     -> AuthStore.signOut()
+     -> set sessionSignedIn false
+     -> state = .signedOut
+
+  -> Remove Account From Device
+     -> AuthStore.eraseLocalData()
+     -> LocalDataWiper.wipeAllLocalData()
+     -> AuthStore.signOut()
 ```
 
 ## `AuthStore`
 Responsibilities:
-- Source of auth state (`signedOut`, `onboarding`, `signedIn`).
-- Generates onboarding recovery key once.
-- Validates username/recovery key input.
-- Triggers backend identity + prekey sync via `IdentitySyncService`.
+- Source of auth state (`signedOut`, `onboarding`, `requiresPasswordReset`, `signedIn`).
+- Generates onboarding recovery key and seed once per onboarding attempt.
+- Validates username/password/recovery-key input.
+- Triggers backend identity + prekey sync via `IdentitySyncService` after successful signed-in transitions.
+- Separates:
+  - `signOut()` (**session-level**) from
+  - `eraseLocalData()` (**destructive local-device wipe**).
 
 Backend sync state is explicit (`idle/syncing/synced/failed`).
 
 ## Repositories
 ### `AuthRepository` (protocol)
-Contract for local identity persistence and recovery key lifecycle.
+Contract for local identity persistence and recovery-key lifecycle.
 
 ### `MockAuthRepository`
-Current concrete implementation; despite name, it is the app’s active local auth persistence component in both modes.
+Current concrete implementation; despite name, it is the active local auth persistence component in both app modes.
 - Stores username in `UserDefaults`.
-- Stores seed in Keychain (`veil.identity/identitySeed`).
+- Stores identity seed in Keychain (`veil.identity/identitySeed`).
 - Does not persist plaintext recovery key.
 
 ### `NetworkAuthRepository` (**WIP / currently not wired in AppEnvironment**)
-Wraps `AuthRepository` and opportunistically publishes identity/prekeys to backend asynchronously.
+Wraps an `AuthRepository` and attempts backend registration/prekey publish after local create/restore.
 
 ## Recovery key system
 `RecoveryKeyGenerator`:
@@ -64,24 +106,28 @@ Wraps `AuthRepository` and opportunistically publishes identity/prekeys to backe
 - Encodes in Base32 and groups with `-` separators.
 - Decode validates format + checksum.
 
-## Seed derivation and identity bootstrap
-- Recovery seed is passed into `KeyManager.bootstrapIdentityIfNeeded(seed:)`.
-- Deterministic HKDF derivation produces:
-  - Ed25519 identity signing key
-  - X25519 identity agreement key
-
-## Identity bootstrap to backend
-`IdentitySyncService` network implementation:
-1. Builds prekey bundle from `KeyManager`.
-2. Registers username/device and identity keys.
-3. Publishes signed prekey + one-time prekeys.
+## Sign out vs erase local data
+- `signOut()`:
+  - clears volatile onboarding/login state,
+  - clears signed-in session flag,
+  - transitions auth state to `.signedOut`.
+  - preserves local account seed/password material for routine password sign-in.
+- `eraseLocalData()`:
+  - clears local account identity (`AuthRepository.clear()`),
+  - clears password verifier/salt,
+  - clears key material via `KeyManager.eraseLocalKeyMaterial()`,
+  - clears APNs token state and device/session defaults,
+  - then signs out.
 
 ## Key references
 - `Veil/Authentication/AuthStore.swift`
 - `Veil/Authentication/AuthRepository.swift`
+- `Veil/Authentication/PasswordManager.swift`
+- `Veil/Authentication/LocalDataWiper.swift`
 - `Veil/Authentication/IdentitySyncService.swift`
 - `Veil/Onboarding/LoginView.swift`
-- `Veil/Onboarding/UsernameCreationView.swift`
+- `Veil/Onboarding/RecoveryLoginView.swift`
+- `Veil/Onboarding/ResetPasswordView.swift`
 - `Veil/Onboarding/RecoveryKeyView.swift`
 - `Veil/Onboarding/Key/RecoveryKeyGenerator.swift`
 - `Veil/Onboarding/Key/Managers/KeyManager.swift`

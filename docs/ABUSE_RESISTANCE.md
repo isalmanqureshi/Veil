@@ -1,5 +1,14 @@
 # Abuse Resistance
 
+## Status
+- Implemented:
+  - Request-level abuse signals and user actions (ignore/block/report).
+- WIP:
+  - Adaptive enforcement logic and client policy automation.
+- Planned:
+  - Event-driven trust/abuse orchestration across additional surfaces.
+
+
 ## Current anti-abuse primitives
 Veil has foundational anti-abuse scaffolding embedded across request models and UI.
 

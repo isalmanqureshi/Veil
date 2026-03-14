@@ -1,5 +1,14 @@
 # Backend API Contract
 
+## Status
+- Implemented:
+  - Client-side DTOs and service calls for users, prekeys, messages, requests, and push token registration.
+- WIP:
+  - Metadata-hardening policy completeness and deployment-level backend guarantees.
+- Planned:
+  - Operational hardening and final contract governance/versioning.
+
+
 > Client service paths currently include `/v1/...`. Endpoint names below are shown both in requested canonical form and actual client path.
 
 ## Users and prekeys
