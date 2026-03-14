@@ -39,9 +39,7 @@ final class PasswordManager {
 
         guard
             let salt = try? keychain.load(service: service, account: saltAccount),
-            let verifier = try? keychain.load(service: service, account: verifierAccount),
-            let salt,
-            let verifier
+            let verifier = try? keychain.load(service: service, account: verifierAccount)
         else {
             return false
         }
