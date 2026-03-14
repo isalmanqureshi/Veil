@@ -56,4 +56,34 @@ final class KeychainStore {
         ]
         SecItemDelete(query as CFDictionary)
     }
+
+    func deleteAll(service: String, accountPrefix: String? = nil) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ]
+
+        if accountPrefix == nil {
+            SecItemDelete(query as CFDictionary)
+            return
+        }
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess else { return }
+
+        guard let items = result as? [[String: Any]] else { return }
+
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  let accountPrefix,
+                  account.hasPrefix(accountPrefix) else {
+                continue
+            }
+
+            delete(service: service, account: account)
+        }
+    }
 }

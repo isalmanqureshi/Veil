@@ -30,6 +30,7 @@ final class AuthStore: ObservableObject {
     private let passwordManager: PasswordManager
     private let identitySyncService: IdentitySyncService
     private let deviceIdentityStore: DeviceIdentityStore
+    private let localDataWiper: LocalDataWiping
     private let defaults: UserDefaults
     private let sessionKey = "veil.session.isSignedIn"
 
@@ -38,6 +39,7 @@ final class AuthStore: ObservableObject {
         passwordManager: PasswordManager = PasswordManager(),
         identitySyncService: IdentitySyncService = NoopIdentitySyncService(),
         deviceIdentityStore: DeviceIdentityStore = DeviceIdentityStore(),
+        localDataWiper: LocalDataWiping? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.authRepo = authRepo
@@ -45,6 +47,11 @@ final class AuthStore: ObservableObject {
         self.identitySyncService = identitySyncService
         self.deviceIdentityStore = deviceIdentityStore
         self.defaults = defaults
+        self.localDataWiper = localDataWiper ?? LocalDataWiper(
+            authRepository: authRepo,
+            passwordManager: passwordManager,
+            defaults: defaults
+        )
         bootstrap()
     }
 
@@ -145,8 +152,7 @@ final class AuthStore: ObservableObject {
     }
 
     func eraseLocalData() {
-        authRepo.clear()
-        passwordManager.clearPassword()
+        localDataWiper.wipeAllLocalData()
         signOut()
     }
 
