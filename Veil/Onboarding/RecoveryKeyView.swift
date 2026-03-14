@@ -30,7 +30,7 @@ struct RecoveryKeyView: View {
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 8)
 
-            Text("Store this safely. If lost, your account cannot be recovered.")
+            Text("Store this safely. If you forget your password, this key is how you recover your account.")
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -148,7 +148,7 @@ struct RecoveryKeyView: View {
     let environment = AppEnvironment()
     let auth = AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore)
     auth.startOnboarding()
-    auth.onboardingUsername = "preview_user"
+    auth.setOnboardingUsername("preview_user")
     auth.prepareRecoveryKeyIfNeeded()
 
     return RecoveryKeyView()

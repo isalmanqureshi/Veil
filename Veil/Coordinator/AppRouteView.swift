@@ -10,7 +10,10 @@ import SwiftUI
 enum AppRoute: Hashable {
     case login
     case username
+    case passwordCreation
     case recoveryKey
+    case recoveryLogin
+    case resetPassword
     case inbox
     case startChat
     case chat(username: String)
@@ -64,9 +67,13 @@ struct AppRootView: View {
             }())
         }
         .onChange(of: auth.state) { _, newState in
-            if case .signedOut = newState {
+            switch newState {
+            case .signedOut, .signedIn, .requiresPasswordReset:
                 coordinator.path.removeAll()
+            case .onboarding:
+                break
             }
+
             environment.setSignedIn({
                 if case .signedIn = newState { return true }
                 return false
@@ -92,6 +99,9 @@ struct AppRootView: View {
         case .onboarding:
             UsernameCreationView()
 
+        case .requiresPasswordReset:
+            ResetPasswordView()
+
         case .signedIn:
             InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
         }
@@ -107,8 +117,17 @@ struct AppRootView: View {
         case .username:
             UsernameCreationView()
 
+        case .passwordCreation:
+            PasswordCreationView()
+
         case .recoveryKey:
             RecoveryKeyView()
+
+        case .recoveryLogin:
+            RecoveryLoginView()
+
+        case .resetPassword:
+            ResetPasswordView()
 
         case .inbox:
             InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
