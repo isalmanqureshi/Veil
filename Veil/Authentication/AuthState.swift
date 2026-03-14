@@ -9,6 +9,7 @@ import Foundation
 enum AuthState: Equatable {
     case signedOut
     case onboarding
+    case requiresPasswordReset(user: UserIdentity)
     case signedIn(user: UserIdentity)
 }
 

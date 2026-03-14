@@ -1,32 +1,17 @@
-//
-//  LoginView.swift
-//  Veil
-//
-//  Created by Salman Qureshi on 2/11/26.
-//
-
 import SwiftUI
 
-struct LoginView: View {
-
+struct RecoveryLoginView: View {
     @EnvironmentObject private var auth: AuthStore
-    @EnvironmentObject private var coordinator: AppCoordinator
 
     @State private var username = ""
-    @State private var password = ""
-    @FocusState private var focusedField: Field?
-
-    private enum Field {
-        case username
-        case password
-    }
+    @State private var recoveryKey = ""
 
     private var normalizedUsername: String {
         UsernameRules.normalize(username)
     }
 
     private var canSubmit: Bool {
-        UsernameRules.isValid(normalizedUsername) && password.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8
+        UsernameRules.isValid(normalizedUsername) && !recoveryKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -34,32 +19,25 @@ struct LoginView: View {
             TextField("Username", text: $username)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
-                .keyboardType(.asciiCapable)
-                .focused($focusedField, equals: .username)
-                .submitLabel(.next)
-                .onSubmit { focusedField = .password }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
 
-            SecureField("Password", text: $password)
+            SecureField("Recovery key", text: $recoveryKey)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
-                .focused($focusedField, equals: .password)
-                .submitLabel(.go)
-                .onSubmit { signIn() }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
 
             if let error = auth.loginErrorMessage {
                 Text(error)
-                    .font(.system(size: 13))
+                    .font(.caption)
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Button("Sign in", action: signIn)
+            Button("Recover account", action: recover)
                 .disabled(!canSubmit)
                 .frame(maxWidth: .infinity)
                 .padding()
@@ -67,25 +45,11 @@ struct LoginView: View {
                 .foregroundColor(Color(.systemBackground))
                 .cornerRadius(12)
 
-            Button("Forgot password?") {
-                coordinator.push(.recoveryLogin)
-            }
-            .font(.system(size: 15, weight: .medium))
-
-            Button("Use recovery key instead") {
-                coordinator.push(.recoveryLogin)
-            }
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(.secondary)
-
             Spacer()
         }
         .padding(24)
-        .navigationTitle("Sign in")
+        .navigationTitle("Recover account")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            focusedField = .username
-        }
         .onChange(of: username) { newValue in
             let sanitized = UsernameRules.sanitize(newValue)
             if sanitized != newValue {
@@ -94,17 +58,14 @@ struct LoginView: View {
         }
     }
 
-    private func signIn() {
+    private func recover() {
         guard canSubmit else { return }
-        _ = auth.login(username: normalizedUsername, password: password)
+        _ = auth.recoverAccount(username: normalizedUsername, recoveryKey: recoveryKey)
     }
 }
 
 #Preview {
-    let coordinator = AppCoordinator()
     let environment = AppEnvironment()
-
-    return LoginView()
-        .environmentObject(coordinator)
+    return RecoveryLoginView()
         .environmentObject(AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
 }

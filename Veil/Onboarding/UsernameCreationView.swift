@@ -132,9 +132,8 @@ struct UsernameCreationView: View {
     private func continueIfValid() {
         guard isValid else { return }
 
-        auth.onboardingUsername = normalizedUsername
-        auth.prepareRecoveryKeyIfNeeded()
-        coordinator.push(.recoveryKey)
+        auth.setOnboardingUsername(normalizedUsername)
+        coordinator.push(.passwordCreation)
     }
 
     private func generateUsername() {

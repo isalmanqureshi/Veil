@@ -18,7 +18,8 @@ enum BackendSyncState: Equatable {
 final class AuthStore: ObservableObject {
 
     @Published private(set) var state: AuthState = .signedOut
-    @Published var onboardingUsername: String = ""
+    @Published private(set) var onboardingUsername: String = ""
+    @Published private(set) var onboardingPassword: String = ""
     @Published private(set) var onboardingRecoveryKey: String = ""
     @Published private(set) var onboardingErrorMessage: String?
     @Published private(set) var loginErrorMessage: String?
@@ -26,35 +27,52 @@ final class AuthStore: ObservableObject {
 
     private var onboardingSeed: Data?
     private let authRepo: AuthRepository
+    private let passwordManager: PasswordManager
     private let identitySyncService: IdentitySyncService
     private let deviceIdentityStore: DeviceIdentityStore
+    private let defaults: UserDefaults
+    private let sessionKey = "veil.session.isSignedIn"
 
     init(
         authRepo: AuthRepository,
+        passwordManager: PasswordManager = PasswordManager(),
         identitySyncService: IdentitySyncService = NoopIdentitySyncService(),
-        deviceIdentityStore: DeviceIdentityStore = DeviceIdentityStore()
+        deviceIdentityStore: DeviceIdentityStore = DeviceIdentityStore(),
+        defaults: UserDefaults = .standard
     ) {
         self.authRepo = authRepo
+        self.passwordManager = passwordManager
         self.identitySyncService = identitySyncService
         self.deviceIdentityStore = deviceIdentityStore
+        self.defaults = defaults
         bootstrap()
     }
 
     func bootstrap() {
-        if let user = authRepo.loadCurrentUser() {
-            state = .signedIn(user: user)
-        } else {
+        guard let user = authRepo.loadCurrentUser() else {
             state = .signedOut
+            return
         }
+
+        state = isSessionSignedIn() ? .signedIn(user: user) : .signedOut
     }
 
     func startOnboarding() {
         onboardingUsername = ""
+        onboardingPassword = ""
         onboardingRecoveryKey = ""
         onboardingSeed = nil
         onboardingErrorMessage = nil
         loginErrorMessage = nil
         state = .onboarding
+    }
+
+    func setOnboardingUsername(_ username: String) {
+        onboardingUsername = UsernameRules.normalize(username)
+    }
+
+    func setOnboardingPassword(_ password: String) {
+        onboardingPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func prepareRecoveryKeyIfNeeded() {
@@ -79,6 +97,11 @@ final class AuthStore: ObservableObject {
             return
         }
 
+        guard onboardingPassword.count >= 8 else {
+            onboardingErrorMessage = "Set a password with at least 8 characters."
+            return
+        }
+
         guard let seed = onboardingSeed, !onboardingRecoveryKey.isEmpty else {
             onboardingErrorMessage = "Recovery key is missing. Please go back and try again."
             return
@@ -95,9 +118,13 @@ final class AuthStore: ObservableObject {
             try km.bootstrapIdentityIfNeeded(seed: seed)
             _ = try km.makePreKeyBundle(oneTimeCount: 20)
 
+            try passwordManager.setPassword(onboardingPassword)
+
             onboardingUsername = ""
+            onboardingPassword = ""
             onboardingRecoveryKey = ""
             onboardingSeed = nil
+            setSessionSignedIn(true)
             state = .signedIn(user: user)
             triggerBackendSync(for: normalizedUsername)
         } catch {
@@ -106,17 +133,51 @@ final class AuthStore: ObservableObject {
     }
 
     func signOut() {
-        authRepo.clear()
         onboardingUsername = ""
+        onboardingPassword = ""
         onboardingRecoveryKey = ""
         onboardingSeed = nil
         loginErrorMessage = nil
         onboardingErrorMessage = nil
         backendSyncState = .idle
+        setSessionSignedIn(false)
         state = .signedOut
     }
 
-    func login(username: String, recoveryKey: String) -> Bool {
+    func eraseLocalData() {
+        authRepo.clear()
+        passwordManager.clearPassword()
+        signOut()
+    }
+
+    func login(username: String, password: String) -> Bool {
+        loginErrorMessage = nil
+
+        let normalizedUsername = UsernameRules.normalize(username)
+        let normalizedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard UsernameRules.isValid(normalizedUsername) else {
+            loginErrorMessage = "Enter a valid username."
+            return false
+        }
+
+        guard let user = authRepo.loadCurrentUser(), user.username == normalizedUsername else {
+            loginErrorMessage = "This account isn’t available on this device."
+            return false
+        }
+
+        guard passwordManager.verifyPassword(normalizedPassword) else {
+            loginErrorMessage = "Incorrect password."
+            return false
+        }
+
+        setSessionSignedIn(true)
+        state = .signedIn(user: user)
+        triggerBackendSync(for: normalizedUsername)
+        return true
+    }
+
+    func recoverAccount(username: String, recoveryKey: String) -> Bool {
         loginErrorMessage = nil
 
         let normalizedUsername = UsernameRules.normalize(username)
@@ -133,7 +194,7 @@ final class AuthStore: ObservableObject {
         }
 
         guard let user = authRepo.restoreUser(username: normalizedUsername, recoveryKey: normalizedRecoveryKey) else {
-            loginErrorMessage = "Couldn’t sign in. Check your username and recovery key."
+            loginErrorMessage = "Couldn’t recover account. Check your username and recovery key."
             return false
         }
 
@@ -146,9 +207,34 @@ final class AuthStore: ObservableObject {
             return false
         }
 
-        state = .signedIn(user: user)
-        triggerBackendSync(for: normalizedUsername)
+        setSessionSignedIn(false)
+        state = .requiresPasswordReset(user: user)
         return true
+    }
+
+    func resetPassword(newPassword: String) -> Bool {
+        let normalizedPassword = newPassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedPassword.count >= 8 else {
+            loginErrorMessage = "Password must be at least 8 characters."
+            return false
+        }
+
+        guard case .requiresPasswordReset(let user) = state else {
+            loginErrorMessage = "Recover your account before resetting password."
+            return false
+        }
+
+        do {
+            try passwordManager.setPassword(normalizedPassword)
+            loginErrorMessage = nil
+            setSessionSignedIn(true)
+            state = .signedIn(user: user)
+            triggerBackendSync(for: user.username)
+            return true
+        } catch {
+            loginErrorMessage = "Couldn’t save your new password. Try again."
+            return false
+        }
     }
 
     func retryPendingSync() async {
@@ -172,5 +258,13 @@ final class AuthStore: ObservableObject {
         } catch {
             backendSyncState = .failed(message: error.localizedDescription)
         }
+    }
+
+    private func setSessionSignedIn(_ isSignedIn: Bool) {
+        defaults.set(isSignedIn, forKey: sessionKey)
+    }
+
+    private func isSessionSignedIn() -> Bool {
+        defaults.bool(forKey: sessionKey)
     }
 }
