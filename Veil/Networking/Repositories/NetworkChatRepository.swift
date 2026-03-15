@@ -100,8 +100,26 @@ final class NetworkChatRepository: ChatRepository {
                 continue
             }
 
-            guard var session = sessionManager.session(for: envelope.fromUsername) else { continue }
-            guard let plaintext = try? crypto.decrypt(ciphertext: envelope.payloadB64, for: envelope.fromUsername, session: &session) else { continue }
+            guard var session = sessionManager.session(for: envelope.fromUsername) else {
+                // Avoid endless redelivery loops for messages we cannot process yet.
+                ackIds.append(envelope.serverMessageId)
+                continue
+            }
+            guard let plaintext = try? crypto.decrypt(ciphertext: envelope.payloadB64, for: envelope.fromUsername, session: &session) else {
+                let fallback = ChatMessage(
+                    id: stableMessageUUID(from: envelope.serverMessageId),
+                    chatUsername: envelope.fromUsername,
+                    direction: .incoming,
+                    ciphertext: envelope.payloadB64,
+                    plaintextPreview: "Unable to decrypt message",
+                    createdAt: envelope.queuedAt,
+                    timer: MessageTimer(rawValue: envelope.timer ?? "") ?? .hour1,
+                    state: .failed
+                )
+                append(fallback, serverMessageId: envelope.serverMessageId)
+                ackIds.append(envelope.serverMessageId)
+                continue
+            }
             sessionManager.saveSession(session)
 
             let message = ChatMessage(

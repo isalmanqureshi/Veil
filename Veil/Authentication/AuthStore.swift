@@ -33,6 +33,7 @@ final class AuthStore: ObservableObject {
     private let localDataWiper: LocalDataWiping
     private let defaults: UserDefaults
     private let sessionKey = "veil.session.isSignedIn"
+    private var backendSyncTask: Task<Void, Never>?
 
     init(
         authRepo: AuthRepository,
@@ -140,6 +141,8 @@ final class AuthStore: ObservableObject {
     }
 
     func signOut() {
+        backendSyncTask?.cancel()
+        backendSyncTask = nil
         onboardingUsername = ""
         onboardingPassword = ""
         onboardingRecoveryKey = ""
@@ -249,19 +252,23 @@ final class AuthStore: ObservableObject {
     }
 
     private func triggerBackendSync(for username: String) {
-        Task {
+        backendSyncTask?.cancel()
+        backendSyncTask = Task {
             await syncIdentityAndPreKeys(username: username)
         }
     }
 
     private func syncIdentityAndPreKeys(username: String) async {
+        if Task.isCancelled { return }
         backendSyncState = .syncing
         let deviceId = deviceIdentityStore.currentDeviceId()
 
         do {
             try await identitySyncService.sync(username: username, deviceId: deviceId)
+            if Task.isCancelled { return }
             backendSyncState = .synced
         } catch {
+            if Task.isCancelled { return }
             backendSyncState = .failed(message: error.localizedDescription)
         }
     }
