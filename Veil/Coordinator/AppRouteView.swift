@@ -69,7 +69,7 @@ struct AppRootView: View {
         .onChange(of: auth.state) { _, newState in
             switch newState {
             case .signedOut, .signedIn, .requiresPasswordReset:
-                coordinator.path.removeAll()
+                coordinator.clear()
             case .onboarding:
                 break
             }

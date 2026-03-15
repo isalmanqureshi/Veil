@@ -45,8 +45,7 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
             }
             .onAppear { scrollToBottom(proxy) }
-            .onChange(of: vm.messages.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: isComposerFocused) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: vm.messages.last?.id) { _, _ in scrollToBottom(proxy) }
             .safeAreaInset(edge: .bottom) {
                 ChatComposerView(
                     vm: vm,

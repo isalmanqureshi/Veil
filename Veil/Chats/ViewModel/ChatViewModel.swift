@@ -24,11 +24,12 @@ final class ChatViewModel: ObservableObject {
     private let chatUsername: String
     private let repo: ChatRepository
     private var pendingOutgoingPlaintext: [UUID: String] = [:]
+    private var inFlightMessageIds: Set<UUID> = []
 
     init(chatUsername: String, repo: ChatRepository) {
         self.chatUsername = chatUsername
         self.repo = repo
-        self.messages = repo.loadMessages(chatUsername: chatUsername)
+        self.messages = Self.sortedMessages(repo.loadMessages(chatUsername: chatUsername))
     }
 
     var canSend: Bool {
@@ -43,6 +44,7 @@ final class ChatViewModel: ObservableObject {
         draftText = ""
 
         // Insert local "sending" bubble immediately (ciphertext placeholder)
+        let timer = selectedTimer
         let local = ChatMessage(
             id: UUID(),
             chatUsername: chatUsername,
@@ -50,23 +52,27 @@ final class ChatViewModel: ObservableObject {
             ciphertext: "encrypting…",
             plaintextPreview: text,
             createdAt: Date(),
-            timer: selectedTimer,
+            timer: timer,
             state: .sending
         )
         messages.append(local)
+        messages = Self.sortedMessages(messages)
         pendingOutgoingPlaintext[local.id] = text
+        inFlightMessageIds.insert(local.id)
 
         Task {
-            await sendWithSilentRetry(localId: local.id, plaintext: text)
+            await sendWithSilentRetry(localId: local.id, plaintext: text, timer: timer)
         }
     }
 
-    private func sendWithSilentRetry(localId: UUID, plaintext: String) async {
+    private func sendWithSilentRetry(localId: UUID, plaintext: String, timer: MessageTimer) async {
+        defer { inFlightMessageIds.remove(localId) }
+
         do {
             let sent = try await repo.sendMessage(
                 chatUsername: chatUsername,
                 plaintext: plaintext,
-                timer: selectedTimer
+                timer: timer
             )
             replace(localId: localId, with: sent)
 
@@ -77,7 +83,7 @@ final class ChatViewModel: ObservableObject {
                 let sent = try await repo.sendMessage(
                     chatUsername: chatUsername,
                     plaintext: plaintext,
-                    timer: selectedTimer
+                    timer: timer
                 )
                 replace(localId: localId, with: sent)
             } catch {
@@ -87,8 +93,25 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func replace(localId: UUID, with sent: ChatMessage) {
-        guard let idx = messages.firstIndex(where: { $0.id == localId }) else { return }
-        messages[idx] = sent
+        guard let idx = messages.firstIndex(where: { $0.id == localId }) else {
+            messages.append(sent)
+            messages = Self.sortedMessages(messages)
+            return
+        }
+
+        let optimistic = messages[idx]
+        let merged = ChatMessage(
+            id: optimistic.id,
+            chatUsername: sent.chatUsername,
+            direction: sent.direction,
+            ciphertext: sent.ciphertext,
+            plaintextPreview: sent.plaintextPreview,
+            createdAt: sent.createdAt,
+            timer: sent.timer,
+            state: sent.state
+        )
+        messages[idx] = merged
+        messages = Self.sortedMessages(messages)
         pendingOutgoingPlaintext.removeValue(forKey: localId)
     }
 
@@ -97,17 +120,20 @@ final class ChatViewModel: ObservableObject {
         var m = messages[idx]
         m.state = .failed
         messages[idx] = m
+        messages = Self.sortedMessages(messages)
     }
 
     func retryFailed(_ message: ChatMessage) {
         guard message.state == .failed else { return }
+        guard !inFlightMessageIds.contains(message.id) else { return }
         guard let plaintext = pendingOutgoingPlaintext[message.id] else { return }
         // “Silent retry” on tap; no big banners
         if let idx = messages.firstIndex(where: { $0.id == message.id }) {
             messages[idx].state = .sending
         }
+        inFlightMessageIds.insert(message.id)
         Task {
-            await sendWithSilentRetry(localId: message.id, plaintext: plaintext)
+            await sendWithSilentRetry(localId: message.id, plaintext: plaintext, timer: message.timer)
         }
     }
     /**
@@ -151,10 +177,20 @@ final class ChatViewModel: ObservableObject {
                 state: .sent
             )
             messages.append(attachmentMessage)
+            messages = Self.sortedMessages(messages)
         } catch {
             attachmentStatus = "Attachment upload failed"
         }
 
         isUploadingAttachment = false
+    }
+
+    private static func sortedMessages(_ source: [ChatMessage]) -> [ChatMessage] {
+        source.sorted {
+            if $0.createdAt == $1.createdAt {
+                return $0.id.uuidString < $1.id.uuidString
+            }
+            return $0.createdAt < $1.createdAt
+        }
     }
 }

@@ -41,11 +41,10 @@ struct RequestDetailsView: View {
                     showReportSheet = false
                     request = nil
 
-                    coordinator.push(.trustWarning(
+                    coordinator.reset(to: .trustWarning(
                         title: "Report received",
                         message: "Thanks. This request was removed and will help improve protections."
                     ))
-                    // ✅ Don’t pop here
                 }
             )
         }
@@ -143,11 +142,10 @@ struct RequestDetailsView: View {
                     Button {
                         requestsRepo.block(requestId: req.id)
                         request = nil
-                        coordinator.push(.trustWarning(
+                        coordinator.reset(to: .trustWarning(
                             title: "Blocked",
                             message: "This sender can’t request messages from you."
                         ))
-                        // ✅ Don’t pop immediately; let user read it
                     } label: {
                         Text("Block")
                             .font(.system(size: 15, weight: .semibold))
@@ -264,4 +262,3 @@ extension RequestSignalsFormatter {
         return "Accept"
     }
 }
-
