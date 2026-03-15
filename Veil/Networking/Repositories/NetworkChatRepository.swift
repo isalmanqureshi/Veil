@@ -101,7 +101,17 @@ final class NetworkChatRepository: ChatRepository {
             }
 
             guard var session = sessionManager.session(for: envelope.fromUsername) else {
-                // Avoid endless redelivery loops for messages we cannot process yet.
+                let fallback = ChatMessage(
+                    id: stableMessageUUID(from: envelope.serverMessageId),
+                    chatUsername: envelope.fromUsername,
+                    direction: .incoming,
+                    ciphertext: envelope.payloadB64,
+                    plaintextPreview: "Unable to decrypt message",
+                    createdAt: envelope.queuedAt,
+                    timer: MessageTimer(rawValue: envelope.timer ?? "") ?? .hour1,
+                    state: .failed
+                )
+                append(fallback, serverMessageId: envelope.serverMessageId)
                 ackIds.append(envelope.serverMessageId)
                 continue
             }
@@ -142,14 +152,31 @@ final class NetworkChatRepository: ChatRepository {
 
     private func append(_ message: ChatMessage) {
         lock.withLock {
-            store[message.chatUsername, default: []].append(message)
+            var messages = store[message.chatUsername, default: []]
+            guard !messages.contains(where: { $0.id == message.id }) else { return }
+            messages.append(message)
+            messages.sort {
+                if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
+                return $0.createdAt < $1.createdAt
+            }
+            store[message.chatUsername] = messages
         }
     }
 
     private func append(_ message: ChatMessage, serverMessageId: String) {
         lock.withLock {
             guard !seenServerMessageIds.contains(serverMessageId) else { return }
-            store[message.chatUsername, default: []].append(message)
+            var messages = store[message.chatUsername, default: []]
+            guard !messages.contains(where: { $0.id == message.id }) else {
+                seenServerMessageIds.insert(serverMessageId)
+                return
+            }
+            messages.append(message)
+            messages.sort {
+                if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
+                return $0.createdAt < $1.createdAt
+            }
+            store[message.chatUsername] = messages
             seenServerMessageIds.insert(serverMessageId)
             if seenServerMessageIds.count > 2_000 {
                 seenServerMessageIds = Set(seenServerMessageIds.suffix(1_000))
