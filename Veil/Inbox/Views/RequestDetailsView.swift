@@ -16,6 +16,7 @@ struct RequestDetailsView: View {
 
     @State private var request: MessageRequestThread?
     @State private var showReportSheet = false
+    @State private var isPerformingAction = false
 
     init(requestId: UUID, requestsRepo: MessageRequestsRepository) {
         self.requestId = requestId
@@ -37,6 +38,8 @@ struct RequestDetailsView: View {
             ReportSheet(
                 onCancel: { showReportSheet = false },
                 onSubmit: { reason in
+                    guard !isPerformingAction else { return }
+                    isPerformingAction = true
                     requestsRepo.report(requestId: requestId, reason: reason)
                     showReportSheet = false
                     request = nil
@@ -52,6 +55,9 @@ struct RequestDetailsView: View {
 
     private func reload() {
         request = requestsRepo.loadRequests().first(where: { $0.id == requestId })
+        if request != nil {
+            isPerformingAction = false
+        }
     }
 
     private func acceptTitle(for req: MessageRequestThread) -> String {
@@ -106,6 +112,8 @@ struct RequestDetailsView: View {
             VStack(spacing: 12) {
 
                 Button {
+                    guard !isPerformingAction else { return }
+                    isPerformingAction = true
                     let username = requestsRepo.accept(requestId: req.id)
                     request = nil
 
@@ -124,9 +132,12 @@ struct RequestDetailsView: View {
                 .background(Color.primary)
                 .foregroundColor(Color(.systemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .disabled(isPerformingAction)
 
                 HStack(spacing: 12) {
                     Button {
+                        guard !isPerformingAction else { return }
+                        isPerformingAction = true
                         requestsRepo.ignore(requestId: req.id)
                         request = nil
                         coordinator.pop()
@@ -138,8 +149,11 @@ struct RequestDetailsView: View {
                     }
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .disabled(isPerformingAction)
 
                     Button {
+                        guard !isPerformingAction else { return }
+                        isPerformingAction = true
                         requestsRepo.block(requestId: req.id)
                         request = nil
                         coordinator.reset(to: .trustWarning(
@@ -154,9 +168,11 @@ struct RequestDetailsView: View {
                     }
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .disabled(isPerformingAction)
                 }
 
                 Button {
+                    guard !isPerformingAction else { return }
                     showReportSheet = true
                 } label: {
                     Text("Report")
@@ -165,6 +181,7 @@ struct RequestDetailsView: View {
                         .padding(.vertical, 12)
                         .foregroundStyle(.secondary)
                 }
+                .disabled(isPerformingAction)
             }
 
             Spacer()

@@ -61,10 +61,7 @@ struct AppRootView: View {
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
             environment.setAppActive(true)
-            environment.setSignedIn({
-                if case .signedIn = auth.state { return true }
-                return false
-            }())
+            environment.setSignedIn(isSignedInState(auth.state))
         }
         .onChange(of: auth.state) { _, newState in
             switch newState {
@@ -74,13 +71,11 @@ struct AppRootView: View {
                 break
             }
 
-            environment.setSignedIn({
-                if case .signedIn = newState { return true }
-                return false
-            }())
+            environment.setSignedIn(isSignedInState(newState))
         }
 
         .onChange(of: auth.backendSyncState) { _, newState in
+            guard isSignedInState(auth.state) else { return }
             if case .synced = newState {
                 environment.syncPreKeysIfNeeded()
             }
@@ -88,6 +83,12 @@ struct AppRootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             environment.setAppActive(newPhase == .active)
         }
+    }
+
+
+    private func isSignedInState(_ state: AuthState) -> Bool {
+        if case .signedIn = state { return true }
+        return false
     }
 
     @ViewBuilder

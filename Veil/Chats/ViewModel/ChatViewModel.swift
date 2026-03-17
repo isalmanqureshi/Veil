@@ -25,6 +25,8 @@ final class ChatViewModel: ObservableObject {
     private let repo: ChatRepository
     private var pendingOutgoingPlaintext: [UUID: String] = [:]
     private var inFlightMessageIds: Set<UUID> = []
+    private var sendTasks: [UUID: Task<Void, Never>] = [:]
+    private var attachmentTask: Task<Void, Never>?
 
     init(chatUsername: String, repo: ChatRepository) {
         self.chatUsername = chatUsername
@@ -60,20 +62,27 @@ final class ChatViewModel: ObservableObject {
         pendingOutgoingPlaintext[local.id] = text
         inFlightMessageIds.insert(local.id)
 
-        Task {
-            await sendWithSilentRetry(localId: local.id, plaintext: text, timer: timer)
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.sendWithSilentRetry(localId: local.id, plaintext: text, timer: timer)
+            await MainActor.run {
+                self.sendTasks[local.id] = nil
+            }
         }
+        sendTasks[local.id] = task
     }
 
     private func sendWithSilentRetry(localId: UUID, plaintext: String, timer: MessageTimer) async {
         defer { inFlightMessageIds.remove(localId) }
 
+        if Task.isCancelled { return }
         do {
             let sent = try await repo.sendMessage(
                 chatUsername: chatUsername,
                 plaintext: plaintext,
                 timer: timer
             )
+            if Task.isCancelled { return }
             replace(localId: localId, with: sent)
 
         } catch {
@@ -85,6 +94,7 @@ final class ChatViewModel: ObservableObject {
                     plaintext: plaintext,
                     timer: timer
                 )
+                if Task.isCancelled { return }
                 replace(localId: localId, with: sent)
             } catch {
                 markFailed(localId: localId)
@@ -132,9 +142,14 @@ final class ChatViewModel: ObservableObject {
             messages[idx].state = .sending
         }
         inFlightMessageIds.insert(message.id)
-        Task {
-            await sendWithSilentRetry(localId: message.id, plaintext: plaintext, timer: message.timer)
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.sendWithSilentRetry(localId: message.id, plaintext: plaintext, timer: message.timer)
+            await MainActor.run {
+                self.sendTasks[message.id] = nil
+            }
         }
+        sendTasks[message.id] = task
     }
     /**
      TO:DO - Attachment requirements (how to wire, mock-first)
@@ -151,38 +166,66 @@ final class ChatViewModel: ObservableObject {
      Send message referencing upload id/URL
      */
     func addAttachment(_ attachment: AttachmentDraft, svc: AttachmentService) async {
+        attachmentTask?.cancel()
+
         guard attachment.bytes <= svc.maxBytes else {
             attachmentStatus = "Attachment exceeds \(svc.maxBytes / (1024 * 1024)) MB limit"
             return
         }
 
-        isUploadingAttachment = true
-        attachmentStatus = "Preparing attachment…"
-        let stripped = svc.stripMetadata(attachment)
-        attachmentStatus = "Encrypting attachment…"
-        let encrypted = svc.encryptForUpload(stripped, recipient: chatUsername)
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await MainActor.run {
+                self.isUploadingAttachment = true
+                self.attachmentStatus = "Preparing attachment…"
+            }
 
-        do {
-            let uploadRef = try await svc.upload(encrypted)
-            attachmentStatus = "Attachment uploaded securely"
+            let stripped = svc.stripMetadata(attachment)
+            await MainActor.run {
+                self.attachmentStatus = "Encrypting attachment…"
+            }
+            let encrypted = svc.encryptForUpload(stripped, recipient: self.chatUsername)
 
-            let attachmentMessage = ChatMessage(
-                id: UUID(),
-                chatUsername: chatUsername,
-                direction: .outgoing,
-                ciphertext: "attachment:\(uploadRef)",
-                plaintextPreview: attachment.fileName,
-                createdAt: Date(),
-                timer: selectedTimer,
-                state: .sent
-            )
-            messages.append(attachmentMessage)
-            messages = Self.sortedMessages(messages)
-        } catch {
-            attachmentStatus = "Attachment upload failed"
+            do {
+                let uploadRef = try await svc.upload(encrypted)
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self.attachmentStatus = "Attachment uploaded securely"
+
+                    let attachmentMessage = ChatMessage(
+                        id: UUID(),
+                        chatUsername: self.chatUsername,
+                        direction: .outgoing,
+                        ciphertext: "attachment:\(uploadRef)",
+                        plaintextPreview: attachment.fileName,
+                        createdAt: Date(),
+                        timer: self.selectedTimer,
+                        state: .sent
+                    )
+                    self.messages.append(attachmentMessage)
+                    self.messages = Self.sortedMessages(self.messages)
+                }
+            } catch {
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    self.attachmentStatus = "Attachment upload failed"
+                }
+            }
+
+            await MainActor.run {
+                self.isUploadingAttachment = false
+            }
         }
 
-        isUploadingAttachment = false
+        attachmentTask = task
+        await task.value
+    }
+
+    deinit {
+        for task in sendTasks.values {
+            task.cancel()
+        }
+        attachmentTask?.cancel()
     }
 
     private static func sortedMessages(_ source: [ChatMessage]) -> [ChatMessage] {

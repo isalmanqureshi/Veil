@@ -7,9 +7,12 @@
 import SwiftUI
 
 final class ScreenshotDetector {
+    private static var observer: NSObjectProtocol?
 
     static func start(trustCenter: TrustCenter) {
-        NotificationCenter.default.addObserver(
+        guard observer == nil else { return }
+
+        observer = NotificationCenter.default.addObserver(
             forName: UIApplication.userDidTakeScreenshotNotification,
             object: nil,
             queue: .main
@@ -26,4 +29,3 @@ final class ScreenshotDetector {
         }
     }
 }
-
