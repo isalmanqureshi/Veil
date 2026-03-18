@@ -48,7 +48,7 @@ final class NetworkChatRepository: ChatRepository {
     }
 
     func sendMessage(chatUsername: String, plaintext: String, timer: MessageTimer) async throws -> ChatMessage {
-        guard let fromUsername = authContext.currentUsername() else {
+        guard let fromUsername = authContext.currentSignedInUsername() else {
             throw APIError.server(statusCode: 401, message: "Not signed in")
         }
 

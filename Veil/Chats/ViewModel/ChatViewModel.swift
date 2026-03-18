@@ -85,6 +85,8 @@ final class ChatViewModel: ObservableObject {
             if Task.isCancelled { return }
             replace(localId: localId, with: sent)
 
+        } catch is CancellationError {
+            return
         } catch {
             // Silent retry once (no user-facing error yet)
             do {
@@ -96,7 +98,10 @@ final class ChatViewModel: ObservableObject {
                 )
                 if Task.isCancelled { return }
                 replace(localId: localId, with: sent)
+            } catch is CancellationError {
+                return
             } catch {
+                if Task.isCancelled { return }
                 markFailed(localId: localId)
             }
         }
