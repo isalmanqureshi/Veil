@@ -82,7 +82,7 @@ final class MessagePoller: ObservableObject {
     }
 
     private func performPollCycle() async throws -> Bool {
-        guard let username = authContext.currentUsername() else {
+        guard let username = authContext.currentSignedInUsername() else {
             return false
         }
 
@@ -93,7 +93,7 @@ final class MessagePoller: ObservableObject {
         let envelopes = try await inboxResponse.messages
         _ = await refreshRequests
 
-        if Task.isCancelled || authContext.currentUsername() != username {
+        if Task.isCancelled || authContext.currentSignedInUsername() != username {
             return false
         }
 
@@ -102,7 +102,7 @@ final class MessagePoller: ObservableObject {
             _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
         }
 
-        if Task.isCancelled || authContext.currentUsername() != username {
+        if Task.isCancelled || authContext.currentSignedInUsername() != username {
             return false
         }
 

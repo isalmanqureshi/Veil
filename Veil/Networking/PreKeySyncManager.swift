@@ -55,7 +55,7 @@ final class PreKeySyncManager: ObservableObject {
     }
 
     func syncIfNeeded() async {
-        guard let username = authContext.currentUsername() else { return }
+        guard let username = authContext.currentSignedInUsername() else { return }
 
         let deviceId = authContext.currentDeviceId()
 

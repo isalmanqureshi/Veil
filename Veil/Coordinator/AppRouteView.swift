@@ -60,7 +60,7 @@ struct AppRootView: View {
         .environmentObject(environment.entitlements)
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
-            environment.setAppActive(true)
+            environment.setAppActive(scenePhase == .active)
             environment.setSignedIn(isSignedInState(auth.state))
         }
         .onChange(of: auth.state) { _, newState in

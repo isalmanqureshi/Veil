@@ -19,11 +19,11 @@ final class NetworkMessageRequestsRepository: MessageRequestsRepository {
     }
 
     func accept(requestId: UUID) -> String? {
-        guard let username = authContext.currentUsername() else { return nil }
+        guard let username = authContext.currentSignedInUsername() else { return nil }
         let fromUsername = lock.withLock { cache.first(where: { $0.id == requestId })?.fromUsername }
 
         Task {
-            guard self.authContext.currentUsername() == username else { return }
+            guard self.authContext.currentSignedInUsername() == username else { return }
             _ = try? await self.service.accept(.init(requestId: requestId, username: username))
         }
 
@@ -33,43 +33,43 @@ final class NetworkMessageRequestsRepository: MessageRequestsRepository {
     }
 
     func ignore(requestId: UUID) {
-        guard let username = authContext.currentUsername() else { return }
+        guard let username = authContext.currentSignedInUsername() else { return }
         Task {
-            guard self.authContext.currentUsername() == username else { return }
+            guard self.authContext.currentSignedInUsername() == username else { return }
             _ = try? await self.service.ignore(.init(requestId: requestId, username: username))
         }
         lock.withLock { cache.removeAll { $0.id == requestId } }
     }
 
     func block(requestId: UUID) {
-        guard let username = authContext.currentUsername() else { return }
+        guard let username = authContext.currentSignedInUsername() else { return }
         Task {
-            guard self.authContext.currentUsername() == username else { return }
+            guard self.authContext.currentSignedInUsername() == username else { return }
             _ = try? await self.service.block(.init(requestId: requestId, username: username))
         }
         lock.withLock { cache.removeAll { $0.id == requestId } }
     }
 
     func report(requestId: UUID, reason: String) {
-        guard let username = authContext.currentUsername() else { return }
+        guard let username = authContext.currentSignedInUsername() else { return }
         Task {
-            guard self.authContext.currentUsername() == username else { return }
+            guard self.authContext.currentSignedInUsername() == username else { return }
             _ = try? await self.service.report(.init(requestId: requestId, username: username, reason: reason))
         }
         lock.withLock { cache.removeAll { $0.id == requestId } }
     }
 
     func refresh() async {
-        guard let username = authContext.currentUsername() else { return }
+        guard let username = authContext.currentSignedInUsername() else { return }
         await refresh(for: username)
     }
 
     func refresh(for username: String) async {
-        guard authContext.currentUsername() == username else { return }
+        guard authContext.currentSignedInUsername() == username else { return }
 
         do {
             let response = try await service.loadRequests(username: username)
-            guard authContext.currentUsername() == username else { return }
+            guard authContext.currentSignedInUsername() == username else { return }
             let mapped = response.requests.map { dto in
                 MessageRequestThread(
                     id: dto.id,

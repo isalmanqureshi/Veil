@@ -30,6 +30,7 @@ final class AppEnvironment: ObservableObject {
     private let preKeySyncManager: PreKeySyncManager?
     private var isAppActive = false
     private var isSignedIn = false
+    private var preKeySyncTask: Task<Void, Never>?
 
     init(
         config: BackendConfig = .default,
@@ -115,6 +116,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func setSignedIn(_ signedIn: Bool) {
+        guard isSignedIn != signedIn else { return }
         isSignedIn = signedIn
         updatePollingState()
         if signedIn {
@@ -126,6 +128,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     func setAppActive(_ active: Bool) {
+        guard isAppActive != active else { return }
         isAppActive = active
         updatePollingState()
         if active {
@@ -135,7 +138,8 @@ final class AppEnvironment: ObservableObject {
 
 
     func syncPreKeysIfNeeded() {
-        Task {
+        preKeySyncTask?.cancel()
+        preKeySyncTask = Task {
             await preKeySyncManager?.syncIfNeeded()
         }
     }
@@ -148,12 +152,15 @@ final class AppEnvironment: ObservableObject {
         if isSignedIn && isAppActive {
             poller?.start()
             preKeySyncManager?.startMaintenance()
-            Task {
+            preKeySyncTask?.cancel()
+            preKeySyncTask = Task {
                 await preKeySyncManager?.syncIfNeeded()
             }
         } else {
             poller?.stop()
             preKeySyncManager?.stopMaintenance()
+            preKeySyncTask?.cancel()
+            preKeySyncTask = nil
         }
     }
 }
@@ -225,7 +232,7 @@ final class PushTokenSyncService {
     }
 
     func syncCurrentTokenIfPossible() async {
-        guard let username = authContext.currentUsername(),
+        guard let username = authContext.currentSignedInUsername(),
               let tokenHex = tokenStore.currentTokenHex()
         else {
             return
