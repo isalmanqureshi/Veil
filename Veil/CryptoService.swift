@@ -45,6 +45,7 @@ final class AuthenticatedCryptoService: CryptoService {
     private let payloadVersion: UInt8 = 1
     private let outOfOrderWindow: UInt32 = 20
     private let skippedCapacity: Int = 20
+    private let chainContext = "veil.v1.chain"
 
     func encrypt(plaintext: String, for recipient: String, session: inout SessionState) throws -> String {
         guard session.sendingChainKey.count == 32 else {
@@ -52,7 +53,7 @@ final class AuthenticatedCryptoService: CryptoService {
         }
 
         let counter = session.sendCount
-        let context = "veil.v1.send.\(recipient)"
+        let context = chainContext
         let messageKeyData = ChainKDF.deriveMessageKey(
             chainKey: session.sendingChainKey,
             counter: counter,
@@ -126,7 +127,7 @@ final class AuthenticatedCryptoService: CryptoService {
             throw CryptoServiceError.invalidChainKey
         }
 
-        let context = "veil.v1.recv.\(recipient)"
+        let context = chainContext
         let messageKeyData = ChainKDF.deriveMessageKey(
             chainKey: session.receivingChainKey,
             counter: counter,
@@ -156,7 +157,7 @@ final class AuthenticatedCryptoService: CryptoService {
             throw CryptoServiceError.invalidChainKey
         }
 
-        let context = "veil.v1.recv.\(recipient)"
+        let context = chainContext
         let start = session.recvCount
         var trialChainKey = session.receivingChainKey
         var stagedSkipped = session.skippedMessageKeys

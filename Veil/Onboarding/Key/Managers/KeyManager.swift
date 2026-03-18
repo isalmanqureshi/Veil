@@ -135,19 +135,24 @@ final class KeyManager {
     func generateOneTimePreKeys(count: Int) throws -> [OneTimePreKey] {
         guard count > 0 else { return [] }
 
+        let existing = try Set(loadOneTimePreKeys().map(\.id))
+        var usedIds = existing
         var out: [OneTimePreKey] = []
         out.reserveCapacity(count)
 
-        for _ in 0..<count {
+        while out.count < count {
+            let id = UInt32.random(in: 1...UInt32.max)
+            guard !usedIds.contains(id) else { continue }
+
             let priv = Curve25519.KeyAgreement.PrivateKey()
             let pub = priv.publicKey.rawRepresentation
-            let id = UInt32.random(in: 1...UInt32.max)
             let createdAt = Date()
 
             try keychain.save(priv.rawRepresentation, service: service, account: acctOneTimePreKeyPrivPrefix + "\(id)")
             try keychain.save(Data(String(createdAt.timeIntervalSince1970).utf8), service: service, account: acctOneTimePreKeyCreatedPrefix + "\(id)")
 
             out.append(OneTimePreKey(id: id, publicKey: pub, createdAt: createdAt))
+            usedIds.insert(id)
         }
 
         return out

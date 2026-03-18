@@ -55,7 +55,6 @@ final class NetworkChatRepository: ChatRepository {
         let deviceId = authContext.currentDeviceId()
         var session = try await ensureSession(for: chatUsername)
         let payloadB64 = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
-        sessionManager.saveSession(session)
 
         let request = SendMessageRequestDTO(
             fromUsername: fromUsername,
@@ -69,6 +68,7 @@ final class NetworkChatRepository: ChatRepository {
         )
 
         _ = try await messagesService.sendEnvelope(request)
+        sessionManager.saveSession(session)
 
         let sent = ChatMessage(
             id: UUID(),
@@ -101,35 +101,13 @@ final class NetworkChatRepository: ChatRepository {
             }
 
             guard var session = sessionManager.session(for: envelope.fromUsername) else {
-                let fallback = ChatMessage(
-                    id: stableMessageUUID(from: envelope.serverMessageId),
-                    chatUsername: envelope.fromUsername,
-                    direction: .incoming,
-                    ciphertext: envelope.payloadB64,
-                    plaintextPreview: "Unable to decrypt message",
-                    createdAt: envelope.queuedAt,
-                    timer: MessageTimer(rawValue: envelope.timer ?? "") ?? .hour1,
-                    state: .failed
-                )
-                append(fallback, serverMessageId: envelope.serverMessageId)
-                ackIds.append(envelope.serverMessageId)
                 continue
             }
+
             guard let plaintext = try? crypto.decrypt(ciphertext: envelope.payloadB64, for: envelope.fromUsername, session: &session) else {
-                let fallback = ChatMessage(
-                    id: stableMessageUUID(from: envelope.serverMessageId),
-                    chatUsername: envelope.fromUsername,
-                    direction: .incoming,
-                    ciphertext: envelope.payloadB64,
-                    plaintextPreview: "Unable to decrypt message",
-                    createdAt: envelope.queuedAt,
-                    timer: MessageTimer(rawValue: envelope.timer ?? "") ?? .hour1,
-                    state: .failed
-                )
-                append(fallback, serverMessageId: envelope.serverMessageId)
-                ackIds.append(envelope.serverMessageId)
                 continue
             }
+
             sessionManager.saveSession(session)
 
             let message = ChatMessage(

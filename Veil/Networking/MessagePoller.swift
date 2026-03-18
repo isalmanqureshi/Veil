@@ -43,6 +43,7 @@ final class MessagePoller: ObservableObject {
                 } catch is CancellationError {
                     break
                 } catch {
+                    if Task.isCancelled { break }
                     lastError = error.localizedDescription
                     backoffNanoseconds = min(intervalNanoseconds * 2, 30_000_000_000)
                 }
@@ -55,6 +56,7 @@ final class MessagePoller: ObservableObject {
             }
 
             isRunning = false
+            task = nil
         }
     }
 
@@ -86,14 +88,22 @@ final class MessagePoller: ObservableObject {
 
         let deviceId = authContext.currentDeviceId()
         async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
-        async let refreshRequests = requestsRepository.refresh()
+        async let refreshRequests = requestsRepository.refresh(for: username)
 
         let envelopes = try await inboxResponse.messages
         _ = await refreshRequests
 
+        if Task.isCancelled || authContext.currentUsername() != username {
+            return false
+        }
+
         let ackIds = chatRepository.ingestIncoming(envelopes)
         if !ackIds.isEmpty {
             _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
+        }
+
+        if Task.isCancelled || authContext.currentUsername() != username {
+            return false
         }
 
         lastPollAt = Date()

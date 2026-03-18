@@ -16,18 +16,28 @@ final class ChatEncryptionTests: XCTestCase {
         XCTAssertEqual(requests.map(\.fromUsername), ["new_friend", "unknown_veil", "community_mod"])
     }
 
-    func testAuthenticatedCryptoServiceProducesEnvelopeWithoutPlaintextLeak() throws {
+    func testAuthenticatedCryptoServiceProducesEncryptedEnvelopeWithoutPlaintextLeak() throws {
         let crypto = AuthenticatedCryptoService()
-        let session = SessionState(
+        var sender = SessionState(
             username: "alice",
             createdAt: Date(),
+            remoteOneTimePreKeyId: nil,
             rootKey: Data(repeating: 1, count: 32),
             sendingChainKey: Data(repeating: 7, count: 32),
             receivingChainKey: Data(repeating: 9, count: 32)
         )
 
+        var receiver = SessionState(
+            username: "alice",
+            createdAt: Date(),
+            remoteOneTimePreKeyId: nil,
+            rootKey: Data(repeating: 1, count: 32),
+            sendingChainKey: Data(repeating: 9, count: 32),
+            receivingChainKey: Data(repeating: 7, count: 32)
+        )
+
         let plaintext = "top secret message"
-        let sealed = try crypto.encrypt(plaintext: plaintext, for: "alice", session: session)
+        let sealed = try crypto.encrypt(plaintext: plaintext, for: "alice", session: &sender)
 
         XCTAssertFalse(sealed.contains(plaintext))
 
@@ -35,15 +45,27 @@ final class ChatEncryptionTests: XCTestCase {
             return XCTFail("Envelope should be base64 encoded")
         }
 
-        let envelope = try JSONDecoder().decode(EncryptedMessageEnvelope.self, from: envelopeData)
-        XCTAssertEqual(envelope.version, 1)
-        XCTAssertEqual(envelope.recipient, "alice")
-        XCTAssertFalse(envelope.ciphertext.isEmpty)
-        XCTAssertFalse(envelope.tag.isEmpty)
-        XCTAssertFalse(envelope.nonce.isEmpty)
+        XCTAssertGreaterThan(envelopeData.count, 5)
+        XCTAssertEqual(envelopeData[0], 1)
 
-        let decrypted = try crypto.decrypt(ciphertext: sealed, for: "alice", session: session)
+        let decrypted = try crypto.decrypt(ciphertext: sealed, for: "alice", session: &receiver)
         XCTAssertEqual(decrypted, plaintext)
+    }
+
+    func testDecryptFailureDoesNotMutateSessionState() throws {
+        let crypto = AuthenticatedCryptoService()
+        var session = SessionState(
+            username: "alice",
+            createdAt: Date(),
+            remoteOneTimePreKeyId: nil,
+            rootKey: Data(repeating: 1, count: 32),
+            sendingChainKey: Data(repeating: 7, count: 32),
+            receivingChainKey: Data(repeating: 9, count: 32)
+        )
+
+        let original = session
+        XCTAssertThrowsError(try crypto.decrypt(ciphertext: "not-base64", for: "alice", session: &session))
+        XCTAssertEqual(session, original)
     }
 
     @MainActor
