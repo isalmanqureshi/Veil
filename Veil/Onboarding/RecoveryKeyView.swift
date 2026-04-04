@@ -83,7 +83,7 @@ struct RecoveryKeyView: View {
             .padding(.top, 16)
 
             if showCopiedHint {
-                Text("Recovery key copied.")
+                Text("Recovery key copied. Clipboard can be read by other apps.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -134,6 +134,12 @@ struct RecoveryKeyView: View {
         UIPasteboard.general.string = recoveryKey
         withAnimation {
             showCopiedHint = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 90) {
+            if UIPasteboard.general.string == recoveryKey {
+                UIPasteboard.general.string = ""
+            }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

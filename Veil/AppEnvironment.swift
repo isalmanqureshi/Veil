@@ -166,26 +166,27 @@ final class AppEnvironment: ObservableObject {
 }
 
 final class PushTokenStore {
-    private let defaults: UserDefaults
+    private let keychain: KeychainStore
+    private let service = "veil.push"
     private let tokenKey = "veil.push.apns.token"
     private let tokenSyncedKey = "veil.push.apns.token.synced"
     private let tokenSyncedUserKey = "veil.push.apns.token.synced.username"
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    init(keychain: KeychainStore = KeychainStore()) {
+        self.keychain = keychain
     }
 
     func save(tokenData: Data) {
-        defaults.set(tokenData, forKey: tokenKey)
+        try? keychain.save(tokenData, service: service, account: tokenKey)
     }
 
     func hasTokenChanged(_ tokenData: Data) -> Bool {
-        guard let existing = defaults.data(forKey: tokenKey) else { return true }
+        guard let existing = try? keychain.load(service: service, account: tokenKey), let existing else { return true }
         return existing != tokenData
     }
 
     func currentTokenData() -> Data? {
-        defaults.data(forKey: tokenKey)
+        try? keychain.load(service: service, account: tokenKey)
     }
 
     func currentTokenHex() -> String? {
@@ -194,18 +195,20 @@ final class PushTokenStore {
     }
 
     func shouldSync(tokenHex: String, username: String) -> Bool {
-        defaults.string(forKey: tokenSyncedKey) != tokenHex || defaults.string(forKey: tokenSyncedUserKey) != username
+        let syncedToken = try? keychain.loadString(service: service, account: tokenSyncedKey)
+        let syncedUsername = try? keychain.loadString(service: service, account: tokenSyncedUserKey)
+        return syncedToken != tokenHex || syncedUsername != username
     }
 
     func markSynced(tokenHex: String, username: String) {
-        defaults.set(tokenHex, forKey: tokenSyncedKey)
-        defaults.set(username, forKey: tokenSyncedUserKey)
+        try? keychain.saveString(tokenHex, service: service, account: tokenSyncedKey)
+        try? keychain.saveString(username, service: service, account: tokenSyncedUserKey)
     }
 
     func clear() {
-        defaults.removeObject(forKey: tokenKey)
-        defaults.removeObject(forKey: tokenSyncedKey)
-        defaults.removeObject(forKey: tokenSyncedUserKey)
+        keychain.delete(service: service, account: tokenKey)
+        keychain.delete(service: service, account: tokenSyncedKey)
+        keychain.delete(service: service, account: tokenSyncedUserKey)
     }
 }
 
@@ -253,7 +256,9 @@ final class PushTokenSyncService {
             )
             tokenStore.markSynced(tokenHex: tokenHex, username: username)
         } catch {
-            print("Push token sync failed for iOS device: \(error.localizedDescription)")
+            #if DEBUG
+            print("Push token sync failed.")
+            #endif
         }
     }
 }
@@ -314,7 +319,9 @@ final class PushNotificationCoordinator: NSObject, UNUserNotificationCenterDeleg
     }
 
     func didFailToRegisterForRemoteNotifications(error: Error) {
-        print("APNs registration unavailable: \(error.localizedDescription)")
+        #if DEBUG
+        print("APNs registration unavailable.")
+        #endif
     }
 
     func syncTokenIfPossible() async {
