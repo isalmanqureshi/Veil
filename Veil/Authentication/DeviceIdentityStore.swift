@@ -2,20 +2,25 @@ import Foundation
 
 struct DeviceIdentityStore {
     private let deviceIdKey: String
-    private let userDefaults: UserDefaults
+    private let keychain: KeychainStore
+    private let service = "veil.device"
 
-    init(deviceIdKey: String = "veil.currentDevice.id", userDefaults: UserDefaults = .standard) {
+    init(deviceIdKey: String = "veil.currentDevice.id", keychain: KeychainStore = KeychainStore()) {
         self.deviceIdKey = deviceIdKey
-        self.userDefaults = userDefaults
+        self.keychain = keychain
     }
 
     func currentDeviceId() -> String {
-        if let existing = userDefaults.string(forKey: deviceIdKey), !existing.isEmpty {
+        if let existing = try? keychain.loadString(service: service, account: deviceIdKey), let existing, !existing.isEmpty {
             return existing
         }
 
         let newId = UUID().uuidString
-        userDefaults.set(newId, forKey: deviceIdKey)
+        try? keychain.saveString(newId, service: service, account: deviceIdKey)
         return newId
+    }
+
+    func clear() {
+        keychain.delete(service: service, account: deviceIdKey)
     }
 }

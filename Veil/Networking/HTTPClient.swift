@@ -120,14 +120,7 @@ final class HTTPClient {
     private func logRequest(_ request: URLRequest) {
         print("➡️ [HTTP] \(request.httpMethod ?? "-") \(request.url?.absoluteString ?? "-")")
         guard let body = request.httpBody,
-              var json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return }
-
-        if json["payloadB64"] != nil {
-            json["payloadB64"] = "<redacted>"
-        }
-        if json["previewCiphertext"] != nil {
-            json["previewCiphertext"] = "<redacted>"
-        }
+              let json = Self.redactedJSONObject(from: body) else { return }
 
         if let data = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
            let printable = String(data: data, encoding: .utf8) {
@@ -137,15 +130,24 @@ final class HTTPClient {
 
     private func logResponse(_ response: HTTPURLResponse, data: Data) {
         print("⬅️ [HTTP] status=\(response.statusCode) url=\(response.url?.absoluteString ?? "-")")
-        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        _ = data
+    }
 
-        if json["payloadB64"] != nil {
-            json["payloadB64"] = "<redacted>"
+    static func redactedJSONObject(from body: Data) -> [String: Any]? {
+        guard var json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return nil }
+        let sensitiveKeys: Set<String> = [
+            "payloadB64",
+            "previewCiphertext",
+            "token",
+            "password",
+            "recoveryKey",
+            "seed",
+            "signature"
+        ]
+        for key in sensitiveKeys where json[key] != nil {
+            json[key] = "<redacted>"
         }
-        if let data = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
-           let printable = String(data: data, encoding: .utf8) {
-            print("⬅️ body: \(printable)")
-        }
+        return json
     }
     #endif
 }
