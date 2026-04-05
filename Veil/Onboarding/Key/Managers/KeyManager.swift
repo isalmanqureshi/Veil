@@ -135,19 +135,24 @@ final class KeyManager {
     func generateOneTimePreKeys(count: Int) throws -> [OneTimePreKey] {
         guard count > 0 else { return [] }
 
+        let existing = try Set(loadOneTimePreKeys().map(\.id))
+        var usedIds = existing
         var out: [OneTimePreKey] = []
         out.reserveCapacity(count)
 
-        for _ in 0..<count {
+        while out.count < count {
+            let id = UInt32.random(in: 1...UInt32.max)
+            guard !usedIds.contains(id) else { continue }
+
             let priv = Curve25519.KeyAgreement.PrivateKey()
             let pub = priv.publicKey.rawRepresentation
-            let id = UInt32.random(in: 1...UInt32.max)
             let createdAt = Date()
 
             try keychain.save(priv.rawRepresentation, service: service, account: acctOneTimePreKeyPrivPrefix + "\(id)")
             try keychain.save(Data(String(createdAt.timeIntervalSince1970).utf8), service: service, account: acctOneTimePreKeyCreatedPrefix + "\(id)")
 
             out.append(OneTimePreKey(id: id, publicKey: pub, createdAt: createdAt))
+            usedIds.insert(id)
         }
 
         return out
@@ -171,6 +176,27 @@ final class KeyManager {
         let spk = try ensureSignedPreKey()
         let otks = try ensureOneTimePreKeys(minCount: oneTimeCount)
         return PreKeyBundle(identity: identity, signedPreKey: spk, oneTimePreKeys: otks)
+    }
+
+
+    func currentSignedPreKey() throws -> SignedPreKey? {
+        try loadSignedPreKey()
+    }
+
+    func oneTimePreKeyCount() throws -> Int {
+        try loadOneTimePreKeys().count
+    }
+
+    func eraseLocalKeyMaterial() {
+        keychain.delete(service: service, account: acctIdentitySignPriv)
+        keychain.delete(service: service, account: acctIdentityAgreePriv)
+        keychain.delete(service: service, account: acctSignedPreKeyId)
+        keychain.delete(service: service, account: acctSignedPreKeyPriv)
+        keychain.delete(service: service, account: acctSignedPreKeySig)
+        keychain.delete(service: service, account: acctSignedPreKeyCreated)
+        keychain.delete(service: service, account: acctOneTimePreKeys)
+        keychain.deleteAll(service: service, accountPrefix: acctOneTimePreKeyPrivPrefix)
+        keychain.deleteAll(service: service, accountPrefix: acctOneTimePreKeyCreatedPrefix)
     }
 
     // MARK: - Internal loads
@@ -251,5 +277,4 @@ extension KeyManager {
                try loadIdentityAgreementPrivateKey()
     }
 }
-
 

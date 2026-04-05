@@ -30,7 +30,7 @@ final class InboxViewModel: ObservableObject {
         requests = requestsRepo.loadRequests()
     }
 
-    func accept(_ req: MessageRequestThread) -> String {
+    func accept(_ req: MessageRequestThread) -> String? {
         let username = requestsRepo.accept(requestId: req.id)
         reload()
         return username

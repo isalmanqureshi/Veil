@@ -8,7 +8,7 @@
 import SwiftUI
 // MARK: Identity
 
-struct UserIdentity: Identifiable {
+struct UserIdentity: Identifiable, Equatable {
     let id: UUID
     var username: String
     let recoveryKey: String

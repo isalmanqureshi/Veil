@@ -13,24 +13,20 @@ struct LoginView: View {
     @EnvironmentObject private var coordinator: AppCoordinator
 
     @State private var username = ""
-    @State private var recoveryKey = ""
+    @State private var password = ""
     @FocusState private var focusedField: Field?
 
     private enum Field {
         case username
-        case recoveryKey
+        case password
     }
 
     private var normalizedUsername: String {
         UsernameRules.normalize(username)
     }
 
-    private var normalizedRecoveryKey: String {
-        recoveryKey.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var canSubmit: Bool {
-        UsernameRules.isValid(normalizedUsername) && !normalizedRecoveryKey.isEmpty
+        UsernameRules.isValid(normalizedUsername) && password.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8
     }
 
     var body: some View {
@@ -41,15 +37,15 @@ struct LoginView: View {
                 .keyboardType(.asciiCapable)
                 .focused($focusedField, equals: .username)
                 .submitLabel(.next)
-                .onSubmit { focusedField = .recoveryKey }
+                .onSubmit { focusedField = .password }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
 
-            SecureField("Recovery key", text: $recoveryKey)
+            SecureField("Password", text: $password)
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
-                .focused($focusedField, equals: .recoveryKey)
+                .focused($focusedField, equals: .password)
                 .submitLabel(.go)
                 .onSubmit { signIn() }
                 .padding()
@@ -71,6 +67,17 @@ struct LoginView: View {
                 .foregroundColor(Color(.systemBackground))
                 .cornerRadius(12)
 
+            Button("Forgot password?") {
+                coordinator.push(.recoveryLogin)
+            }
+            .font(.system(size: 15, weight: .medium))
+
+            Button("Use recovery key instead") {
+                coordinator.push(.recoveryLogin)
+            }
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(.secondary)
+
             Spacer()
         }
         .padding(24)
@@ -89,14 +96,15 @@ struct LoginView: View {
 
     private func signIn() {
         guard canSubmit else { return }
-
-        let ok = auth.login(username: normalizedUsername, recoveryKey: normalizedRecoveryKey)
-        if ok {
-            coordinator.path.removeAll()
-        }
+        _ = auth.login(username: normalizedUsername, password: password)
     }
 }
 
 #Preview {
-    LoginView()
+    let coordinator = AppCoordinator()
+    let environment = AppEnvironment()
+
+    return LoginView()
+        .environmentObject(coordinator)
+        .environmentObject(AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
 }

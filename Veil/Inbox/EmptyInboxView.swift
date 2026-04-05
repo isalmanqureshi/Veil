@@ -8,58 +8,40 @@
 import SwiftUI
 
 struct EmptyInboxView: View {
-    @EnvironmentObject private var coordinator: AppCoordinator
-    @EnvironmentObject private var env: AppEnvironment
-    
+
+    let onStartChat: () -> Void
+    let onShareUsername: () -> Void
+
     var body: some View {
-        VStack {
-            
+        VStack(spacing: 14) {
             Spacer()
-            
-            VStack(spacing: 16) {
-                Text("No conversations yet")
-                    .font(.system(size: 22, weight: .semibold))
-                
-                Button(action: {
-                    // Start chat
-                    coordinator.push(.startChat)
-                }) {
-                    Text("Start a Chat")
-                        .font(.system(size: 17, weight: .semibold))
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                }
-                .background(Color.primary)
-                .foregroundColor(Color(.systemBackground))
-                .cornerRadius(12)
-                
-                Button(action: {
-                    // Share username
-                    coordinator.push(.status)
-                }) {
-                    Text("Share your username")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
-                }
+
+            Text("No conversations yet")
+                .font(.system(size: 28, weight: .bold))
+
+            Button(action: onStartChat) {
+                Text("Start a Chat")
+                    .font(.system(size: 17, weight: .semibold))
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
             }
-            
+            .background(Color.primary)
+            .foregroundColor(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            Button(action: onShareUsername) {
+                Text("Share your username")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.blue)
+            }
+            .padding(.top, 6)
+
             Spacer()
         }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: {
-                    // Settings action
-                }) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 17))
-                }
-            }
-        }
+        .padding(.horizontal, 24)
     }
 }
 
 #Preview {
-    EmptyInboxView()
+    EmptyInboxView(onStartChat: {}, onShareUsername: {})
 }

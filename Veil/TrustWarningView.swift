@@ -12,7 +12,6 @@ struct TrustWarningView: View {
     let title: String
     let message: String
     
-    @EnvironmentObject private var trustCenter: TrustCenter
     
     var body: some View {
         VStack(spacing: 16) {
