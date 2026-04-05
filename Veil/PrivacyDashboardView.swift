@@ -41,10 +41,9 @@ struct PrivacyDashboardView: View {
             }
 
             Section("Identity") {
-                NavigationLink("Username") {}
-                NavigationLink("Linked devices") {}
-                Text("Personas (Phase 2)")
-                    .foregroundStyle(.secondary)
+                comingSoonRow("Username")
+                comingSoonRow("Linked devices")
+                comingSoonRow("Personas")
             }
 
             Section("Visibility") {
@@ -54,13 +53,13 @@ struct PrivacyDashboardView: View {
             }
 
             Section("Data") {
-                NavigationLink("Message retention") {}
+                comingSoonRow("Message retention")
                 Toggle("Backup", isOn: .constant(false))
                 Toggle("Metadata protection", isOn: .constant(true))
             }
 
             Section("Security") {
-                NavigationLink("Key verification") {}
+                comingSoonRow("Key verification")
                 Toggle("Requests require PoW", isOn: Binding(
                     get: { requiresPoW },
                     set: { value in
@@ -106,6 +105,18 @@ struct PrivacyDashboardView: View {
             Text("This will erase local messages, keys, and saved sign-in data from this device. This can’t be undone here.")
         }
         .navigationTitle("Privacy")
+    }
+
+    @ViewBuilder
+    private func comingSoonRow(_ title: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text("Coming soon")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

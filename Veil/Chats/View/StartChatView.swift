@@ -14,6 +14,14 @@ struct StartChatView: View {
     @State private var verifyIdentity = false
     
     @EnvironmentObject private var coordinator: AppCoordinator
+
+    private var normalizedUsername: String {
+        UsernameRules.normalize(username)
+    }
+
+    private var canStartChat: Bool {
+        UsernameRules.isValid(normalizedUsername)
+    }
     
     var body: some View {
         VStack(spacing: 24) {
@@ -53,21 +61,28 @@ struct StartChatView: View {
             
             // CTA
             Button {
-                coordinator.push(.chat(username: username))
+                guard canStartChat else { return }
+                coordinator.push(.chat(username: normalizedUsername))
             } label: {
                 Text("Start Chat")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding()
             }
-            .background(username.isEmpty ? Color.secondary : Color.primary)
+            .background(canStartChat ? Color.primary : Color.secondary)
             .foregroundColor(Color(.systemBackground))
             .cornerRadius(12)
-            .disabled(username.isEmpty)
+            .disabled(!canStartChat)
         }
         .padding(24)
         .navigationTitle("Start Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: username) { newValue in
+            let sanitized = UsernameRules.sanitize(newValue)
+            if sanitized != newValue {
+                username = sanitized
+            }
+        }
     }
 }
 
