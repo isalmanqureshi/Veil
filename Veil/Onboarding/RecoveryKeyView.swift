@@ -30,7 +30,7 @@ struct RecoveryKeyView: View {
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 8)
 
-            Text("Store this safely. If lost, your account cannot be recovered.")
+            Text("Store this safely. If you forget your password, this key is how you recover your account.")
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -83,7 +83,7 @@ struct RecoveryKeyView: View {
             .padding(.top, 16)
 
             if showCopiedHint {
-                Text("Recovery key copied.")
+                Text("Recovery key copied. Clipboard can be read by other apps.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -136,6 +136,12 @@ struct RecoveryKeyView: View {
             showCopiedHint = true
         }
 
+        DispatchQueue.main.asyncAfter(deadline: .now() + 90) {
+            if UIPasteboard.general.string == recoveryKey {
+                UIPasteboard.general.string = ""
+            }
+        }
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             withAnimation {
                 showCopiedHint = false
@@ -146,9 +152,9 @@ struct RecoveryKeyView: View {
 
 #Preview {
     let environment = AppEnvironment()
-    let auth = AuthStore(authRepo: environment.authRepo)
+    let auth = AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore)
     auth.startOnboarding()
-    auth.onboardingUsername = "preview_user"
+    auth.setOnboardingUsername("preview_user")
     auth.prepareRecoveryKeyIfNeeded()
 
     return RecoveryKeyView()

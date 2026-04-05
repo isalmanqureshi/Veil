@@ -90,8 +90,19 @@ final class MockChatRepository: ChatRepository {
             timer: timer,
             state: .sent
         )
-        store[chatUsername, default: []].append(msg)
+        append(msg)
         return msg
+    }
+
+    private func append(_ message: ChatMessage) {
+        var messages = store[message.chatUsername, default: []]
+        guard !messages.contains(where: { $0.id == message.id }) else { return }
+        messages.append(message)
+        messages.sort {
+            if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
+            return $0.createdAt < $1.createdAt
+        }
+        store[message.chatUsername] = messages
     }
 
     private func ensureSession(for chatUsername: String) throws -> SessionState {

@@ -132,9 +132,8 @@ struct UsernameCreationView: View {
     private func continueIfValid() {
         guard isValid else { return }
 
-        auth.onboardingUsername = normalizedUsername
-        auth.prepareRecoveryKeyIfNeeded()
-        coordinator.push(.recoveryKey)
+        auth.setOnboardingUsername(normalizedUsername)
+        coordinator.push(.passwordCreation)
     }
 
     private func generateUsername() {
@@ -162,5 +161,5 @@ struct UsernameCreationView: View {
 
     return UsernameCreationView()
         .environmentObject(coordinator)
-        .environmentObject(AuthStore(authRepo: environment.authRepo))
+        .environmentObject(AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
 }

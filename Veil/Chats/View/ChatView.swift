@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ChatView: View {
 
+    @EnvironmentObject private var coordinator: AppCoordinator
     let username: String
     @StateObject private var vm: ChatViewModel
     private let attachmentService: AttachmentService
@@ -45,8 +46,7 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
             }
             .onAppear { scrollToBottom(proxy) }
-            .onChange(of: vm.messages.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: isComposerFocused) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: vm.messages.last?.id) { _, _ in scrollToBottom(proxy) }
             .safeAreaInset(edge: .bottom) {
                 ChatComposerView(
                     vm: vm,
@@ -68,7 +68,9 @@ struct ChatView: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Image(systemName: "shield.fill")
                     .accessibilityLabel("Verification status")
-                Button { } label: {
+                Button {
+                    coordinator.push(.privacy)
+                } label: {
                     Image(systemName: "lock")
                 }
                 .accessibilityLabel("Privacy controls")

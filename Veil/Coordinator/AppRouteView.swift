@@ -6,11 +6,15 @@
 //
 
 import SwiftUI
+import UIKit
 
 enum AppRoute: Hashable {
     case login
     case username
+    case passwordCreation
     case recoveryKey
+    case recoveryLogin
+    case resetPassword
     case inbox
     case startChat
     case chat(username: String)
@@ -30,6 +34,7 @@ struct AppRootView: View {
     @StateObject private var environment: AppEnvironment
     @StateObject private var trustCenter: TrustCenter
     @StateObject private var auth: AuthStore
+    @State private var privacyShieldVisible = false
 
     init() {
         let coordinator = AppCoordinator()
@@ -39,7 +44,7 @@ struct AppRootView: View {
         _trustCenter = StateObject(wrappedValue: trustCenter)
         
         let environment = AppEnvironment()
-        _auth = StateObject(wrappedValue: AuthStore(authRepo: environment.authRepo))
+        _auth = StateObject(wrappedValue: AuthStore(authRepo: environment.authRepo, identitySyncService: environment.identitySyncService, deviceIdentityStore: environment.deviceIdentityStore))
         _environment = StateObject(wrappedValue: environment)
     }
 
@@ -50,6 +55,18 @@ struct AppRootView: View {
                     routeView(for: route)
                 }
         }
+        .overlay {
+            if privacyShieldVisible && shouldProtectSnapshots {
+                ZStack {
+                    VisualEffectBlur()
+                        .ignoresSafeArea()
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 38))
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+            }
+        }
         .environmentObject(coordinator)
         .environmentObject(environment)
         .environmentObject(trustCenter)
@@ -57,21 +74,56 @@ struct AppRootView: View {
         .environmentObject(environment.entitlements)
         .onAppear {
             ScreenshotDetector.start(trustCenter: trustCenter)
-            environment.setAppActive(true)
-            environment.setSignedIn({
-                if case .signedIn = auth.state { return true }
-                return false
-            }())
+            environment.setAppActive(scenePhase == .active)
+            environment.setSignedIn(isSignedInState(auth.state))
+            privacyShieldVisible = scenePhase != .active
         }
         .onChange(of: auth.state) { _, newState in
-            coordinator.path.removeAll()
-            environment.setSignedIn({
-                if case .signedIn = newState { return true }
-                return false
-            }())
+            switch newState {
+            case .signedOut, .signedIn, .requiresPasswordReset:
+                coordinator.clear()
+            case .onboarding:
+                break
+            }
+
+            environment.setSignedIn(isSignedInState(newState))
+        }
+
+        .onChange(of: auth.backendSyncState) { _, newState in
+            guard isSignedInState(auth.state) else { return }
+            if case .synced = newState {
+                environment.syncPreKeysIfNeeded()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             environment.setAppActive(newPhase == .active)
+            withAnimation(.easeInOut(duration: 0.15)) {
+                privacyShieldVisible = newPhase != .active
+            }
+        }
+    }
+
+
+    private func isSignedInState(_ state: AuthState) -> Bool {
+        if case .signedIn = state { return true }
+        return false
+    }
+
+    private var shouldProtectSnapshots: Bool {
+        switch auth.state {
+        case .signedIn, .onboarding, .requiresPasswordReset:
+            return true
+        case .signedOut:
+            break
+        }
+
+        return coordinator.path.contains { route in
+            switch route {
+            case .recoveryKey, .recoveryLogin, .resetPassword, .chat, .privacy, .requestDetails, .status:
+                return true
+            default:
+                return false
+            }
         }
     }
 
@@ -83,6 +135,9 @@ struct AppRootView: View {
 
         case .onboarding:
             UsernameCreationView()
+
+        case .requiresPasswordReset:
+            ResetPasswordView()
 
         case .signedIn:
             InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
@@ -99,8 +154,17 @@ struct AppRootView: View {
         case .username:
             UsernameCreationView()
 
+        case .passwordCreation:
+            PasswordCreationView()
+
         case .recoveryKey:
             RecoveryKeyView()
+
+        case .recoveryLogin:
+            RecoveryLoginView()
+
+        case .resetPassword:
+            ResetPasswordView()
 
         case .inbox:
             InboxView(chatRepo: environment.chatRepo, requestsRepo: environment.requestsRepo)
@@ -130,6 +194,14 @@ struct AppRootView: View {
             TrustWarningView(title: title, message: message)
         }
     }
+}
+
+private struct VisualEffectBlur: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    }
+
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
 }
 
 #Preview {

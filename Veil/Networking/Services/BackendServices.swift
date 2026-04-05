@@ -1,60 +1,86 @@
 import Foundation
 
-protocol PreKeyService {
-    func publishBundle(_ bundle: PreKeyBundle) async throws
-    func fetchBundle(username: String) async throws -> RemotePreKeyBundle
+protocol UsersService {
+    func register(_ request: RegisterUserRequestDTO) async throws -> RegisterUserResponseDTO
+    func lookup(username: String) async throws -> RegisterUserResponseDTO
 }
 
-protocol MessageService {
-    func sendEnvelope(_ envelope: MessageEnvelopeDTO) async throws
-    func pollInbox() async throws -> [MessageEnvelopeDTO]
+protocol PreKeysService {
+    func publish(_ request: PublishPreKeysRequestDTO) async throws -> PublishPreKeysResponseDTO
+    func fetch(username: String) async throws -> RemotePreKeyBundleDTO
+}
+
+protocol MessagesService {
+    func sendEnvelope(_ request: SendMessageRequestDTO) async throws -> SendMessageResponseDTO
+    func pollInbox(username: String, deviceId: String) async throws -> InboxResponseDTO
+    func ackMessages(_ request: AckMessagesRequestDTO) async throws -> AckMessagesResponseDTO
 }
 
 protocol RequestsService {
-    func load() async throws -> [MessageRequestDTO]
-    func accept(id: UUID) async throws
-    func ignore(id: UUID) async throws
-    func block(id: UUID) async throws
-    func report(id: UUID, reason: String) async throws
+    func loadRequests(username: String) async throws -> RequestsListResponseDTO
+    func accept(_ request: AcceptRequestRequestDTO) async throws -> AcceptRequestResponseDTO
+    func ignore(_ request: IgnoreRequestRequestDTO) async throws -> IgnoreRequestResponseDTO
+    func block(_ request: BlockRequestRequestDTO) async throws -> BlockRequestResponseDTO
+    func report(_ request: ReportRequestRequestDTO) async throws -> ReportRequestResponseDTO
 }
 
-private struct EmptyBody: Encodable {}
-private struct ReportBody: Encodable { let reason: String }
 
-final class NetworkPreKeyService: PreKeyService {
+protocol DevicePushTokenService {
+    func registerToken(_ request: RegisterPushTokenRequestDTO) async throws -> RegisterPushTokenResponseDTO
+}
+
+final class NetworkUsersService: UsersService {
     private let httpClient: HTTPClient
 
     init(httpClient: HTTPClient) {
         self.httpClient = httpClient
     }
 
-    func publishBundle(_ bundle: PreKeyBundle) async throws {
-        try await httpClient.send(path: "/v1/prekeys/publish", method: .post, body: PreKeyBundleDTO(bundle: bundle))
+    func register(_ request: RegisterUserRequestDTO) async throws -> RegisterUserResponseDTO {
+        try await httpClient.post(path: "v1/users/register", body: request)
     }
 
-    func fetchBundle(username: String) async throws -> RemotePreKeyBundle {
-        let dto: RemotePreKeyBundleDTO = try await httpClient.request(
-            path: "/v1/prekeys/\(username)",
-            method: .get,
-            body: Optional<EmptyBody>.none
-        )
-        return try dto.toDomain()
+    func lookup(username: String) async throws -> RegisterUserResponseDTO {
+        try await httpClient.get(path: "v1/users/\(username)")
     }
 }
 
-final class NetworkMessageService: MessageService {
+final class NetworkPreKeysService: PreKeysService {
     private let httpClient: HTTPClient
 
     init(httpClient: HTTPClient) {
         self.httpClient = httpClient
     }
 
-    func sendEnvelope(_ envelope: MessageEnvelopeDTO) async throws {
-        try await httpClient.send(path: "/v1/messages/send", method: .post, body: envelope)
+    func publish(_ request: PublishPreKeysRequestDTO) async throws -> PublishPreKeysResponseDTO {
+        try await httpClient.post(path: "v1/prekeys/publish", body: request)
     }
 
-    func pollInbox() async throws -> [MessageEnvelopeDTO] {
-        try await httpClient.request(path: "/v1/messages/inbox", method: .get, body: Optional<EmptyBody>.none)
+    func fetch(username: String) async throws -> RemotePreKeyBundleDTO {
+        try await httpClient.get(path: "v1/prekeys/\(username)")
+    }
+}
+
+final class NetworkMessagesService: MessagesService {
+    private let httpClient: HTTPClient
+
+    init(httpClient: HTTPClient) {
+        self.httpClient = httpClient
+    }
+
+    func sendEnvelope(_ request: SendMessageRequestDTO) async throws -> SendMessageResponseDTO {
+        try await httpClient.post(path: "v1/messages/send", body: request)
+    }
+
+    func pollInbox(username: String, deviceId: String) async throws -> InboxResponseDTO {
+        try await httpClient.get(path: "v1/messages/inbox", queryItems: [
+            URLQueryItem(name: "username", value: username),
+            URLQueryItem(name: "deviceId", value: deviceId)
+        ])
+    }
+
+    func ackMessages(_ request: AckMessagesRequestDTO) async throws -> AckMessagesResponseDTO {
+        try await httpClient.post(path: "v1/messages/ack", body: request)
     }
 }
 
@@ -65,23 +91,42 @@ final class NetworkRequestsService: RequestsService {
         self.httpClient = httpClient
     }
 
-    func load() async throws -> [MessageRequestDTO] {
-        try await httpClient.request(path: "/v1/requests", method: .get, body: Optional<EmptyBody>.none)
+    func loadRequests(username: String) async throws -> RequestsListResponseDTO {
+        try await httpClient.get(path: "v1/requests", queryItems: [URLQueryItem(name: "username", value: username)])
     }
 
-    func accept(id: UUID) async throws {
-        try await httpClient.send(path: "/v1/requests/\(id.uuidString)/accept", method: .post, body: EmptyBody())
+    func accept(_ request: AcceptRequestRequestDTO) async throws -> AcceptRequestResponseDTO {
+        try await httpClient.post(path: "v1/requests/accept", body: request)
     }
 
-    func ignore(id: UUID) async throws {
-        try await httpClient.send(path: "/v1/requests/\(id.uuidString)/ignore", method: .post, body: EmptyBody())
+    func ignore(_ request: IgnoreRequestRequestDTO) async throws -> IgnoreRequestResponseDTO {
+        try await httpClient.post(path: "v1/requests/ignore", body: request)
     }
 
-    func block(id: UUID) async throws {
-        try await httpClient.send(path: "/v1/requests/\(id.uuidString)/block", method: .post, body: EmptyBody())
+    func block(_ request: BlockRequestRequestDTO) async throws -> BlockRequestResponseDTO {
+        try await httpClient.post(path: "v1/requests/block", body: request)
     }
 
-    func report(id: UUID, reason: String) async throws {
-        try await httpClient.send(path: "/v1/requests/\(id.uuidString)/report", method: .post, body: ReportBody(reason: reason))
+    func report(_ request: ReportRequestRequestDTO) async throws -> ReportRequestResponseDTO {
+        try await httpClient.post(path: "v1/requests/report", body: request)
+    }
+}
+
+
+final class NetworkDevicePushTokenService: DevicePushTokenService {
+    private let httpClient: HTTPClient
+
+    init(httpClient: HTTPClient) {
+        self.httpClient = httpClient
+    }
+
+    func registerToken(_ request: RegisterPushTokenRequestDTO) async throws -> RegisterPushTokenResponseDTO {
+        try await httpClient.post(path: "v1/push/register", body: request)
+    }
+}
+
+final class NoopDevicePushTokenService: DevicePushTokenService {
+    func registerToken(_ request: RegisterPushTokenRequestDTO) async throws -> RegisterPushTokenResponseDTO {
+        RegisterPushTokenResponseDTO(accepted: false)
     }
 }
