@@ -46,9 +46,9 @@ struct PricingView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                 }
-                .disabled(entitlements.isPro || selectedProduct == nil)
-                .background(entitlements.isPro || selectedProduct == nil ? Color(.secondarySystemBackground) : Color.primary)
-                .foregroundStyle(entitlements.isPro || selectedProduct == nil ? .secondary : Color(.systemBackground))
+                .disabled(!canSubscribe)
+                .background(canSubscribe ? Color.primary : Color(.secondarySystemBackground))
+                .foregroundStyle(canSubscribe ? Color(.systemBackground) : .secondary)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 Button("Restore purchases") {
@@ -73,6 +73,26 @@ struct PricingView: View {
 
     private var selectedProduct: Product? {
         products.first(where: { $0.id == selectedProductID })
+    }
+
+    private var selectedMockOffer: MockOffer? {
+        entitlements.mockOffers.first(where: { $0.id == selectedProductID })
+    }
+
+    private var canSubscribe: Bool {
+        if entitlements.isPro {
+            return false
+        }
+
+        if selectedProduct != nil {
+            return true
+        }
+
+        if entitlements.isUsingMockProvider, selectedMockOffer != nil {
+            return true
+        }
+
+        return false
     }
 
     private var productCards: some View {
