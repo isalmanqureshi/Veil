@@ -3,28 +3,31 @@ import CryptoKit
 
 final class NetworkChatRepository: ChatRepository {
     private let crypto: CryptoService
-    private let messagesService: MessagesService
     private let preKeysService: PreKeysService
     private let localKeyManager: KeyManager
     private let sessionManager: SessionManager
     private let authContext: LocalAuthContext
+    private let messageObjectStore: MessageObjectStore
+    private let pointerPublisher: MessagePointerPublisher
 
     private let lock = NSLock()
     private var store: [String: [ChatMessage]] = [:]
     private var threadIdByUsername: [String: UUID] = [:]
-    private var seenServerMessageIds: Set<String> = []
+    private var seenPointerIds: Set<UUID> = []
 
     init(
         crypto: CryptoService,
-        messagesService: MessagesService,
         preKeysService: PreKeysService,
+        messageObjectStore: MessageObjectStore,
+        pointerPublisher: MessagePointerPublisher,
         localKeyManager: KeyManager = KeyManager(),
         sessionStore: SessionStore = InMemorySessionStore(),
         authContext: LocalAuthContext = LocalAuthContext()
     ) {
         self.crypto = crypto
-        self.messagesService = messagesService
         self.preKeysService = preKeysService
+        self.messageObjectStore = messageObjectStore
+        self.pointerPublisher = pointerPublisher
         self.localKeyManager = localKeyManager
         self.sessionManager = SessionManager(keyManager: localKeyManager, store: sessionStore)
         self.authContext = authContext
@@ -52,22 +55,33 @@ final class NetworkChatRepository: ChatRepository {
             throw APIError.server(statusCode: 401, message: "Not signed in")
         }
 
-        let deviceId = authContext.currentDeviceId()
         var session = try await ensureSession(for: chatUsername)
         let payloadB64 = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
 
-        let request = SendMessageRequestDTO(
-            fromUsername: fromUsername,
-            toUsername: chatUsername,
-            deviceId: deviceId,
+        let object = EncryptedMessageObject(
+            ref: nil,
             payloadB64: payloadB64,
             envelopeVersion: 1,
-            oneTimePreKeyId: session.remoteOneTimePreKeyId,
-            timer: timer.rawValue,
-            clientMessageId: UUID().uuidString
+            senderUsername: fromUsername,
+            recipientUsername: chatUsername,
+            conversationId: nil,
+            createdAt: Date(),
+            timer: timer,
+            metadata: .messageDefault
         )
 
-        _ = try await messagesService.sendEnvelope(request)
+        let objectRef = try await messageObjectStore.putMessageObject(object)
+        let pointer = MessagePointerEvent(
+            id: UUID(),
+            toUsername: chatUsername,
+            fromUsername: fromUsername,
+            objectRef: objectRef,
+            createdAt: Date(),
+            requestFlow: false,
+            oneTimePreKeyId: session.remoteOneTimePreKeyId,
+            deliveryState: .pending
+        )
+        try await pointerPublisher.publishPointer(pointer)
         sessionManager.saveSession(session)
 
         let sent = ChatMessage(
@@ -91,41 +105,61 @@ final class NetworkChatRepository: ChatRepository {
         }
     }
 
-    func ingestIncoming(_ envelopes: [InboxEnvelopeDTO]) -> [String] {
-        var ackIds: [String] = []
+    @discardableResult
+    func pollIncomingPointers() async throws -> Bool {
+        guard let username = authContext.currentSignedInUsername() else {
+            return false
+        }
 
-        for envelope in envelopes {
-            if lock.withLock({ seenServerMessageIds.contains(envelope.serverMessageId) }) {
-                ackIds.append(envelope.serverMessageId)
+        let pointers = try await pointerPublisher.fetchPointers(for: username, deviceId: authContext.currentDeviceId())
+        guard !pointers.isEmpty else { return false }
+
+        var ackIds: [UUID] = []
+
+        for pointer in pointers {
+            if lock.withLock({ seenPointerIds.contains(pointer.id) }) {
+                ackIds.append(pointer.id)
                 continue
             }
 
-            guard var session = sessionManager.session(for: envelope.fromUsername) else {
+            guard var session = sessionManager.session(for: pointer.fromUsername) else {
+                // Until a request is accepted and session established, we skip processing but still ack to avoid endless retries.
+                ackIds.append(pointer.id)
                 continue
             }
 
-            guard let plaintext = try? crypto.decrypt(ciphertext: envelope.payloadB64, for: envelope.fromUsername, session: &session) else {
+            guard let object = try? await messageObjectStore.getMessageObject(ref: pointer.objectRef) else {
+                ackIds.append(pointer.id)
+                continue
+            }
+
+            guard let plaintext = try? crypto.decrypt(ciphertext: object.payloadB64, for: pointer.fromUsername, session: &session) else {
+                ackIds.append(pointer.id)
                 continue
             }
 
             sessionManager.saveSession(session)
 
             let message = ChatMessage(
-                id: stableMessageUUID(from: envelope.serverMessageId),
-                chatUsername: envelope.fromUsername,
+                id: stableMessageUUID(from: pointer.id.uuidString),
+                chatUsername: pointer.fromUsername,
                 direction: .incoming,
-                ciphertext: envelope.payloadB64,
+                ciphertext: object.payloadB64,
                 plaintextPreview: plaintext,
-                createdAt: envelope.queuedAt,
-                timer: MessageTimer(rawValue: envelope.timer ?? "") ?? .hour1,
+                createdAt: pointer.createdAt,
+                timer: object.timer ?? .hour1,
                 state: .sent
             )
 
-            append(message, serverMessageId: envelope.serverMessageId)
-            ackIds.append(envelope.serverMessageId)
+            append(message, pointerId: pointer.id)
+            ackIds.append(pointer.id)
         }
 
-        return Array(Set(ackIds))
+        if !ackIds.isEmpty {
+            try await pointerPublisher.ackPointers(ids: ackIds, username: username)
+        }
+
+        return true
     }
 
     private func append(_ message: ChatMessage) {
@@ -141,12 +175,12 @@ final class NetworkChatRepository: ChatRepository {
         }
     }
 
-    private func append(_ message: ChatMessage, serverMessageId: String) {
+    private func append(_ message: ChatMessage, pointerId: UUID) {
         lock.withLock {
-            guard !seenServerMessageIds.contains(serverMessageId) else { return }
+            guard !seenPointerIds.contains(pointerId) else { return }
             var messages = store[message.chatUsername, default: []]
             guard !messages.contains(where: { $0.id == message.id }) else {
-                seenServerMessageIds.insert(serverMessageId)
+                seenPointerIds.insert(pointerId)
                 return
             }
             messages.append(message)
@@ -155,9 +189,9 @@ final class NetworkChatRepository: ChatRepository {
                 return $0.createdAt < $1.createdAt
             }
             store[message.chatUsername] = messages
-            seenServerMessageIds.insert(serverMessageId)
-            if seenServerMessageIds.count > 2_000 {
-                seenServerMessageIds = Set(seenServerMessageIds.suffix(1_000))
+            seenPointerIds.insert(pointerId)
+            if seenPointerIds.count > 2_000 {
+                seenPointerIds = Set(seenPointerIds.suffix(1_000))
             }
         }
     }
@@ -171,8 +205,8 @@ final class NetworkChatRepository: ChatRepository {
         return try sessionManager.establishSessionAsInitiator(remote: remoteBundle)
     }
 
-    private func stableMessageUUID(from serverMessageId: String) -> UUID {
-        let digest = SHA256.hash(data: Data("msg.network.\(serverMessageId)".utf8))
+    private func stableMessageUUID(from rawId: String) -> UUID {
+        let digest = SHA256.hash(data: Data("msg.network.\(rawId)".utf8))
         let bytes = Array(digest)
         let uuidString = String(
             format: "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",

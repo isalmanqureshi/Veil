@@ -35,6 +35,8 @@ final class MockChatRepository: ChatRepository {
     private var store: [String: [ChatMessage]] = [:]
     private var threadIdByUsername: [String: UUID] = [:]
     private var failFirstSendForChat: Set<String> = ["gfhjj"] // deterministic “first send fails"
+    private let messageObjectStore: MessageObjectStore
+    private let pointerPublisher: MessagePointerPublisher
 
     init(crypto: CryptoService) {
         self.crypto = crypto
@@ -43,6 +45,8 @@ final class MockChatRepository: ChatRepository {
 
         let localSeed = Data(SHA256.hash(data: Data("veil.local.seed".utf8)))
         try? localKeyManager.bootstrapIdentityIfNeeded(seed: localSeed)
+        self.messageObjectStore = InMemoryMessageObjectStore()
+        self.pointerPublisher = InMemoryPointerPublisher()
 
         seedDeterministicChats()
     }
@@ -76,15 +80,42 @@ final class MockChatRepository: ChatRepository {
 
         try await Task.sleep(nanoseconds: 200_000_000)
 
+        let fromUsername = "mock_local"
         var session = try ensureSession(for: chatUsername)
-        let ciphertext = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
+        let payloadB64 = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
         sessionManager.saveSession(session)
+
+        let object = EncryptedMessageObject(
+            ref: nil,
+            payloadB64: payloadB64,
+            envelopeVersion: 1,
+            senderUsername: fromUsername,
+            recipientUsername: chatUsername,
+            conversationId: nil,
+            createdAt: Date(),
+            timer: timer,
+            metadata: .messageDefault
+        )
+
+        let objectRef = try await messageObjectStore.putMessageObject(object)
+        let pointer = MessagePointerEvent(
+            id: UUID(),
+            toUsername: chatUsername,
+            fromUsername: fromUsername,
+            objectRef: objectRef,
+            createdAt: Date(),
+            requestFlow: false,
+            oneTimePreKeyId: session.remoteOneTimePreKeyId,
+            deliveryState: .pending
+        )
+        try await pointerPublisher.publishPointer(pointer)
+
         let plaintextPreview = plaintext
         let msg = ChatMessage(
             id: UUID(),
             chatUsername: chatUsername,
             direction: .outgoing,
-            ciphertext: ciphertext,
+            ciphertext: payloadB64,
             plaintextPreview: plaintextPreview,
             createdAt: Date(),
             timer: timer,
