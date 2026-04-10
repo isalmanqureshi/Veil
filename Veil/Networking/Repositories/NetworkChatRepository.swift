@@ -9,6 +9,8 @@ final class NetworkChatRepository: ChatRepository {
     private let authContext: LocalAuthContext
     private let messageObjectStore: MessageObjectStore
     private let pointerPublisher: MessagePointerPublisher
+    private let conversationEventLog: ConversationEventLog
+    private let conversationProjector: ConversationProjector
 
     private let lock = NSLock()
     private var store: [String: [ChatMessage]] = [:]
@@ -20,6 +22,8 @@ final class NetworkChatRepository: ChatRepository {
         preKeysService: PreKeysService,
         messageObjectStore: MessageObjectStore,
         pointerPublisher: MessagePointerPublisher,
+        conversationEventLog: ConversationEventLog,
+        conversationProjector: ConversationProjector,
         localKeyManager: KeyManager = KeyManager(),
         sessionStore: SessionStore = InMemorySessionStore(),
         authContext: LocalAuthContext = LocalAuthContext()
@@ -28,6 +32,8 @@ final class NetworkChatRepository: ChatRepository {
         self.preKeysService = preKeysService
         self.messageObjectStore = messageObjectStore
         self.pointerPublisher = pointerPublisher
+        self.conversationEventLog = conversationEventLog
+        self.conversationProjector = conversationProjector
         self.localKeyManager = localKeyManager
         self.sessionManager = SessionManager(keyManager: localKeyManager, store: sessionStore)
         self.authContext = authContext
@@ -58,25 +64,50 @@ final class NetworkChatRepository: ChatRepository {
         var session = try await ensureSession(for: chatUsername)
         let payloadB64 = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
 
+        let conversationId = ConversationId.directMessage(localUsername: fromUsername, peerUsername: chatUsername)
         let object = EncryptedMessageObject(
             ref: nil,
             payloadB64: payloadB64,
             envelopeVersion: 1,
             senderUsername: fromUsername,
             recipientUsername: chatUsername,
-            conversationId: nil,
+            conversationId: conversationId.id,
             createdAt: Date(),
             timer: timer,
             metadata: .messageDefault
         )
 
         let objectRef = try await messageObjectStore.putMessageObject(object)
+        let heads = try await conversationEventLog.fetchHeads(conversationId: conversationId.id)
+        let currentEvents = try await conversationEventLog.fetchEvents(conversationId: conversationId.id)
+        let clientMessageId = UUID().uuidString
+
+        let event = ConversationEvent(
+            id: UUID(),
+            conversationId: conversationId.id,
+            eventType: .messageCreated,
+            objectRef: objectRef,
+            actorUsername: fromUsername,
+            createdAt: Date(),
+            logicalClock: UInt64(currentEvents.count + 1),
+            previousEventRefs: heads.headRefs,
+            payload: .messageCreated(
+                timer: timer,
+                clientMessageId: clientMessageId,
+                plaintextPreview: plaintext,
+                ciphertextPreview: payloadB64
+            ),
+            signature: nil
+        )
+
+        _ = try await conversationEventLog.append(event)
+
         let pointer = MessagePointerEvent(
             id: UUID(),
             toUsername: chatUsername,
             fromUsername: fromUsername,
             objectRef: objectRef,
-            createdAt: Date(),
+            createdAt: event.createdAt,
             requestFlow: false,
             oneTimePreKeyId: session.remoteOneTimePreKeyId,
             deliveryState: .pending
@@ -84,19 +115,17 @@ final class NetworkChatRepository: ChatRepository {
         try await pointerPublisher.publishPointer(pointer)
         sessionManager.saveSession(session)
 
-        let sent = ChatMessage(
-            id: UUID(),
+        let projected = try await reprojectConversation(peerUsername: chatUsername, localUsername: fromUsername)
+        return projected.last ?? ChatMessage(
+            id: event.id,
             chatUsername: chatUsername,
             direction: .outgoing,
             ciphertext: payloadB64,
             plaintextPreview: plaintext,
-            createdAt: Date(),
+            createdAt: event.createdAt,
             timer: timer,
             state: .sent
         )
-
-        append(sent)
-        return sent
     }
 
     func ensureChatExists(username: String) {
@@ -115,6 +144,7 @@ final class NetworkChatRepository: ChatRepository {
         guard !pointers.isEmpty else { return false }
 
         var ackIds: [UUID] = []
+        var touchedPeers = Set<String>()
 
         for pointer in pointers {
             if lock.withLock({ seenPointerIds.contains(pointer.id) }) {
@@ -123,7 +153,7 @@ final class NetworkChatRepository: ChatRepository {
             }
 
             guard var session = sessionManager.session(for: pointer.fromUsername) else {
-                // Until a request is accepted and session established, we skip processing but still ack to avoid endless retries.
+                // Until request/session acceptance, we cannot decrypt. Acknowledge to avoid unbounded replay.
                 ackIds.append(pointer.id)
                 continue
             }
@@ -140,60 +170,43 @@ final class NetworkChatRepository: ChatRepository {
 
             sessionManager.saveSession(session)
 
-            let message = ChatMessage(
+            let conversationId = ConversationId.directMessage(localUsername: username, peerUsername: pointer.fromUsername)
+            let heads = try await conversationEventLog.fetchHeads(conversationId: conversationId.id)
+            let currentEvents = try await conversationEventLog.fetchEvents(conversationId: conversationId.id)
+
+            let event = ConversationEvent(
                 id: stableMessageUUID(from: pointer.id.uuidString),
-                chatUsername: pointer.fromUsername,
-                direction: .incoming,
-                ciphertext: object.payloadB64,
-                plaintextPreview: plaintext,
+                conversationId: conversationId.id,
+                eventType: .messageCreated,
+                objectRef: pointer.objectRef,
+                actorUsername: pointer.fromUsername,
                 createdAt: pointer.createdAt,
-                timer: object.timer ?? .hour1,
-                state: .sent
+                logicalClock: UInt64(currentEvents.count + 1),
+                previousEventRefs: heads.headRefs,
+                payload: .messageCreated(
+                    timer: object.timer ?? .hour1,
+                    clientMessageId: pointer.id.uuidString,
+                    plaintextPreview: plaintext,
+                    ciphertextPreview: object.payloadB64
+                ),
+                signature: nil
             )
 
-            append(message, pointerId: pointer.id)
+            _ = try await conversationEventLog.append(event)
+            lock.withLock { seenPointerIds.insert(pointer.id) }
+            touchedPeers.insert(pointer.fromUsername)
             ackIds.append(pointer.id)
+        }
+
+        for peer in touchedPeers {
+            _ = try await reprojectConversation(peerUsername: peer, localUsername: username)
         }
 
         if !ackIds.isEmpty {
             try await pointerPublisher.ackPointers(ids: ackIds, username: username)
         }
 
-        return true
-    }
-
-    private func append(_ message: ChatMessage) {
-        lock.withLock {
-            var messages = store[message.chatUsername, default: []]
-            guard !messages.contains(where: { $0.id == message.id }) else { return }
-            messages.append(message)
-            messages.sort {
-                if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
-                return $0.createdAt < $1.createdAt
-            }
-            store[message.chatUsername] = messages
-        }
-    }
-
-    private func append(_ message: ChatMessage, pointerId: UUID) {
-        lock.withLock {
-            guard !seenPointerIds.contains(pointerId) else { return }
-            var messages = store[message.chatUsername, default: []]
-            guard !messages.contains(where: { $0.id == message.id }) else {
-                seenPointerIds.insert(pointerId)
-                return
-            }
-            messages.append(message)
-            messages.sort {
-                if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
-                return $0.createdAt < $1.createdAt
-            }
-            store[message.chatUsername] = messages
-            seenPointerIds.insert(pointerId)
-            if seenPointerIds.count > 2_000 {
-                seenPointerIds = Set(seenPointerIds.suffix(1_000))
-            }
-        }
+        return !touchedPeers.isEmpty
     }
 
     private func ensureSession(for username: String) async throws -> SessionState {
@@ -203,6 +216,18 @@ final class NetworkChatRepository: ChatRepository {
 
         let remoteBundle = try await preKeysService.fetch(username: username).toDomain()
         return try sessionManager.establishSessionAsInitiator(remote: remoteBundle)
+    }
+
+    private func reprojectConversation(peerUsername: String, localUsername: String) async throws -> [ChatMessage] {
+        let conversationId = ConversationId.directMessage(localUsername: localUsername, peerUsername: peerUsername)
+        let events = try await conversationEventLog.fetchEvents(conversationId: conversationId.id)
+        let projected = conversationProjector.projectMessages(events: events, for: peerUsername)
+
+        lock.withLock {
+            store[peerUsername] = projected
+        }
+
+        return projected
     }
 
     private func stableMessageUUID(from rawId: String) -> UUID {

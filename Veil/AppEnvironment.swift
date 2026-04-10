@@ -21,6 +21,8 @@ final class AppEnvironment: ObservableObject {
     let requestsRepo: MessageRequestsRepository
     let messageObjectStore: MessageObjectStore
     let pointerPublisher: MessagePointerPublisher
+    let conversationEventLog: ConversationEventLog
+    let conversationProjector: ConversationProjector
     let purchaseProvider: PurchaseProvider
     let entitlements: EntitlementsStore
     let identitySyncService: IdentitySyncService
@@ -68,10 +70,20 @@ final class AppEnvironment: ObservableObject {
             let finalAuthRepo = authRepo ?? MockAuthRepository()
             let inMemoryStore = InMemoryMessageObjectStore()
             let inMemoryPointerPublisher = InMemoryPointerPublisher()
-            let chat = MockChatRepository(crypto: crypto)
+            let inMemoryEventLog = InMemoryConversationEventLog()
+            let projector = DefaultConversationProjector(localUsername: "mock_local")
+            let chat = MockChatRepository(
+                crypto: crypto,
+                messageObjectStore: inMemoryStore,
+                pointerPublisher: inMemoryPointerPublisher,
+                conversationEventLog: inMemoryEventLog,
+                conversationProjector: projector
+            )
             self.authRepo = finalAuthRepo
             self.messageObjectStore = inMemoryStore
             self.pointerPublisher = inMemoryPointerPublisher
+            self.conversationEventLog = inMemoryEventLog
+            self.conversationProjector = projector
             self.identitySyncService = NoopIdentitySyncService()
             self.chatRepo = chat
             self.requestsRepo = MockMessageRequestsRepository(chatRepo: chat)
@@ -93,24 +105,30 @@ final class AppEnvironment: ObservableObject {
 
             let objectStore: MessageObjectStore
             let pointerPublisher: MessagePointerPublisher
+            let conversationEventLog: ConversationEventLog
             switch resolvedMessagePlaneMode {
             case .centralized:
                 let centralizedStore = CentralizedMessageObjectStore()
                 objectStore = centralizedStore
                 pointerPublisher = CentralizedPointerPublisher(messagesService: messagesService, messageObjectStore: centralizedStore)
+                conversationEventLog = CentralizedConversationEventLog()
             case .decentralizedStub:
                 objectStore = DecentralizedMessageObjectStore()
                 pointerPublisher = DecentralizedPointerPublisher()
+                conversationEventLog = DecentralizedConversationEventLog()
             case .automatic:
                 fatalError("Automatic mode should be resolved before adapter selection")
             }
 
             let localAuth = authRepo ?? MockAuthRepository()
+            let projector = DefaultConversationProjector(localUsername: LocalAuthContext().currentUsername() ?? "")
             let chatRepo = NetworkChatRepository(
                 crypto: crypto,
                 preKeysService: preKeysService,
                 messageObjectStore: objectStore,
-                pointerPublisher: pointerPublisher
+                pointerPublisher: pointerPublisher,
+                conversationEventLog: conversationEventLog,
+                conversationProjector: projector
             )
             let requestsRepo = NetworkMessageRequestsRepository(service: requestsService, chatRepo: chatRepo)
 
@@ -126,6 +144,8 @@ final class AppEnvironment: ObservableObject {
             self.requestsRepo = requestsRepo
             self.messageObjectStore = objectStore
             self.pointerPublisher = pointerPublisher
+            self.conversationEventLog = conversationEventLog
+            self.conversationProjector = projector
             self.poller = MessagePoller(
                 chatRepository: chatRepo,
                 requestsRepository: requestsRepo,

@@ -37,16 +37,26 @@ final class MockChatRepository: ChatRepository {
     private var failFirstSendForChat: Set<String> = ["gfhjj"] // deterministic “first send fails"
     private let messageObjectStore: MessageObjectStore
     private let pointerPublisher: MessagePointerPublisher
+    private let conversationEventLog: ConversationEventLog
+    private let conversationProjector: ConversationProjector
 
-    init(crypto: CryptoService) {
+    init(
+        crypto: CryptoService,
+        messageObjectStore: MessageObjectStore = InMemoryMessageObjectStore(),
+        pointerPublisher: MessagePointerPublisher = InMemoryPointerPublisher(),
+        conversationEventLog: ConversationEventLog = InMemoryConversationEventLog(),
+        conversationProjector: ConversationProjector = DefaultConversationProjector(localUsername: "mock_local")
+    ) {
         self.crypto = crypto
         self.localKeyManager = KeyManager(service: "veil.keys.local.mock")
         self.sessionManager = SessionManager(keyManager: localKeyManager, store: InMemorySessionStore())
 
         let localSeed = Data(SHA256.hash(data: Data("veil.local.seed".utf8)))
         try? localKeyManager.bootstrapIdentityIfNeeded(seed: localSeed)
-        self.messageObjectStore = InMemoryMessageObjectStore()
-        self.pointerPublisher = InMemoryPointerPublisher()
+        self.messageObjectStore = messageObjectStore
+        self.pointerPublisher = pointerPublisher
+        self.conversationEventLog = conversationEventLog
+        self.conversationProjector = conversationProjector
 
         seedDeterministicChats()
     }
@@ -98,31 +108,52 @@ final class MockChatRepository: ChatRepository {
         )
 
         let objectRef = try await messageObjectStore.putMessageObject(object)
+
+        let conversationId = ConversationId.directMessage(localUsername: fromUsername, peerUsername: chatUsername)
+        let currentEvents = try await conversationEventLog.fetchEvents(conversationId: conversationId.id)
+        let currentHeads = try await conversationEventLog.fetchHeads(conversationId: conversationId.id)
+
+        let event = ConversationEvent(
+            id: UUID(),
+            conversationId: conversationId.id,
+            eventType: .messageCreated,
+            objectRef: objectRef,
+            actorUsername: fromUsername,
+            createdAt: Date(),
+            logicalClock: UInt64(currentEvents.count + 1),
+            previousEventRefs: currentHeads.headRefs,
+            payload: .messageCreated(timer: timer, clientMessageId: UUID().uuidString, plaintextPreview: plaintext, ciphertextPreview: payloadB64),
+            signature: nil
+        )
+        _ = try await conversationEventLog.append(event)
+
         let pointer = MessagePointerEvent(
             id: UUID(),
             toUsername: chatUsername,
             fromUsername: fromUsername,
             objectRef: objectRef,
-            createdAt: Date(),
+            createdAt: event.createdAt,
             requestFlow: false,
             oneTimePreKeyId: session.remoteOneTimePreKeyId,
             deliveryState: .pending
         )
         try await pointerPublisher.publishPointer(pointer)
 
-        let plaintextPreview = plaintext
-        let msg = ChatMessage(
-            id: UUID(),
+        let projected = conversationProjector.projectMessages(
+            events: try await conversationEventLog.fetchEvents(conversationId: conversationId.id),
+            for: chatUsername
+        )
+        locklessReplaceMessages(projected, for: chatUsername)
+        return projected.last ?? ChatMessage(
+            id: event.id,
             chatUsername: chatUsername,
             direction: .outgoing,
             ciphertext: payloadB64,
-            plaintextPreview: plaintextPreview,
-            createdAt: Date(),
+            plaintextPreview: plaintext,
+            createdAt: event.createdAt,
             timer: timer,
             state: .sent
         )
-        append(msg)
-        return msg
     }
 
     private func append(_ message: ChatMessage) {
@@ -134,6 +165,19 @@ final class MockChatRepository: ChatRepository {
             return $0.createdAt < $1.createdAt
         }
         store[message.chatUsername] = messages
+    }
+
+
+    private func locklessReplaceMessages(_ messages: [ChatMessage], for username: String) {
+        var deduped: [ChatMessage] = []
+        for message in messages {
+            guard !deduped.contains(where: { $0.id == message.id }) else { continue }
+            deduped.append(message)
+        }
+        store[username] = deduped.sorted {
+            if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
+            return $0.createdAt < $1.createdAt
+        }
     }
 
     private func ensureSession(for chatUsername: String) throws -> SessionState {
