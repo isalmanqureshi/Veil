@@ -7,7 +7,6 @@ final class MessagePoller: ObservableObject {
     @Published private(set) var lastPollAt: Date?
     @Published private(set) var lastError: String?
 
-    private let messagesService: MessagesService
     private let chatRepository: NetworkChatRepository
     private let requestsRepository: NetworkMessageRequestsRepository
     private let authContext: LocalAuthContext
@@ -16,13 +15,11 @@ final class MessagePoller: ObservableObject {
     private var task: Task<Void, Never>?
 
     init(
-        messagesService: MessagesService,
         chatRepository: NetworkChatRepository,
         requestsRepository: NetworkMessageRequestsRepository,
         pollIntervalSeconds: TimeInterval,
         authContext: LocalAuthContext = LocalAuthContext()
     ) {
-        self.messagesService = messagesService
         self.chatRepository = chatRepository
         self.requestsRepository = requestsRepository
         self.intervalNanoseconds = UInt64(max(pollIntervalSeconds, 2) * 1_000_000_000)
@@ -86,21 +83,9 @@ final class MessagePoller: ObservableObject {
             return false
         }
 
-        let deviceId = authContext.currentDeviceId()
-        async let inboxResponse = messagesService.pollInbox(username: username, deviceId: deviceId)
         async let refreshRequests = requestsRepository.refresh(for: username)
-
-        let envelopes = try await inboxResponse.messages
+        let hasMessages = try await chatRepository.pollIncomingPointers()
         _ = await refreshRequests
-
-        if Task.isCancelled || authContext.currentSignedInUsername() != username {
-            return false
-        }
-
-        let ackIds = chatRepository.ingestIncoming(envelopes)
-        if !ackIds.isEmpty {
-            _ = try await messagesService.ackMessages(.init(username: username, deviceId: deviceId, messageIds: ackIds))
-        }
 
         if Task.isCancelled || authContext.currentSignedInUsername() != username {
             return false
@@ -108,6 +93,6 @@ final class MessagePoller: ObservableObject {
 
         lastPollAt = Date()
         lastError = nil
-        return !envelopes.isEmpty
+        return hasMessages
     }
 }
