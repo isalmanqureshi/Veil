@@ -63,6 +63,12 @@ final class MessagePoller: ObservableObject {
         isRunning = false
     }
 
+    deinit {
+        // Safety net: the poll loop strong-captures self, so guarantee teardown
+        // even if an owner releases the poller without calling stop().
+        task?.cancel()
+    }
+
     func refreshNow() async -> Bool {
         do {
             _ = try await performPollCycle()

@@ -6,6 +6,7 @@
 //
 import SwiftUI
 
+@MainActor
 final class ScreenshotDetector {
     private static var observer: NSObjectProtocol?
 

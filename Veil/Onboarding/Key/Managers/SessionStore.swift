@@ -73,10 +73,14 @@ protocol SessionStore {
     func delete(username: String)
 }
 
-final class InMemorySessionStore: SessionStore {
+/// `@unchecked Sendable` is sound here because every access to `dict` is
+/// serialized through `lock` — this is the justified use of the annotation,
+/// not a silenced warning.
+final class InMemorySessionStore: SessionStore, @unchecked Sendable {
+    private let lock = NSLock()
     private var dict: [String: SessionState] = [:]
 
-    func load(username: String) -> SessionState? { dict[username] }
-    func save(_ session: SessionState) { dict[session.username] = session }
-    func delete(username: String) { dict.removeValue(forKey: username) }
+    func load(username: String) -> SessionState? { lock.withLock { dict[username] } }
+    func save(_ session: SessionState) { lock.withLock { dict[session.username] = session } }
+    func delete(username: String) { lock.withLock { dict.removeValue(forKey: username) } }
 }

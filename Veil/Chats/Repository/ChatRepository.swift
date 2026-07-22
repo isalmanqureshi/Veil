@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import CryptoKit
+import Foundation
 
 private func stableUUID(_ rawValue: String) -> UUID {
     UUID(uuidString: rawValue) ?? UUID()
@@ -26,11 +27,14 @@ protocol ChatRepository {
 //ChatRepository with deterministic mock data + silent retry
 enum SendError: Error { case transient }
 
-final class MockChatRepository: ChatRepository {
+/// `@unchecked Sendable`: all mutable dictionary/set state is serialized
+/// through `lock`, mirroring `NetworkChatRepository`.
+final class MockChatRepository: ChatRepository, @unchecked Sendable {
 
     private let crypto: CryptoService
     private let localKeyManager: KeyManager
     private let sessionManager: SessionManager
+    private let lock = NSLock()
     private var remoteKeyManagers: [String: KeyManager] = [:]
     private var store: [String: [ChatMessage]] = [:]
     private var threadIdByUsername: [String: UUID] = [:]
@@ -62,7 +66,7 @@ final class MockChatRepository: ChatRepository {
     }
 
     func loadMessages(chatUsername: String) -> [ChatMessage] {
-        if let existing = store[chatUsername] { return existing }
+        if let existing = lock.withLock({ store[chatUsername] }) { return existing }
 
         // Deterministic seed messages
         let seeded: [ChatMessage] = [
@@ -77,20 +81,25 @@ final class MockChatRepository: ChatRepository {
                 state: .sent
             )
         ]
-        store[chatUsername] = seeded
+        lock.withLock { store[chatUsername] = seeded }
         return seeded
     }
 
     func sendMessage(chatUsername: String, plaintext: String, timer: MessageTimer) async throws -> ChatMessage {
         // Simulate transient failure once per specified chat (silent retry handled in VM)
-        if failFirstSendForChat.contains(chatUsername) {
-            failFirstSendForChat.remove(chatUsername)
+        let shouldFailFirst = lock.withLock { failFirstSendForChat.contains(chatUsername) }
+        if shouldFailFirst {
+            lock.withLock { _ = failFirstSendForChat.remove(chatUsername) }
             throw SendError.transient
         }
 
         try await Task.sleep(nanoseconds: 200_000_000)
 
-        let fromUsername = "mock_local"
+        // Use the signed-in identity so projected messages resolve as outgoing.
+        // The projector compares each event's actor against the local username;
+        // a hardcoded "mock_local" would flip sent messages to .incoming once a
+        // real account exists on device.
+        let fromUsername = LocalAuthContext().currentSignedInUsername() ?? "mock_local"
         var session = try ensureSession(for: chatUsername)
         let payloadB64 = try crypto.encrypt(plaintext: plaintext, for: chatUsername, session: &session)
         sessionManager.saveSession(session)
@@ -143,7 +152,7 @@ final class MockChatRepository: ChatRepository {
             events: try await conversationEventLog.fetchEvents(conversationId: conversationId.id),
             for: chatUsername
         )
-        locklessReplaceMessages(projected, for: chatUsername)
+        replaceMessages(projected, for: chatUsername)
         return projected.last ?? ChatMessage(
             id: event.id,
             chatUsername: chatUsername,
@@ -156,28 +165,17 @@ final class MockChatRepository: ChatRepository {
         )
     }
 
-    private func append(_ message: ChatMessage) {
-        var messages = store[message.chatUsername, default: []]
-        guard !messages.contains(where: { $0.id == message.id }) else { return }
-        messages.append(message)
-        messages.sort {
-            if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
-            return $0.createdAt < $1.createdAt
-        }
-        store[message.chatUsername] = messages
-    }
-
-
-    private func locklessReplaceMessages(_ messages: [ChatMessage], for username: String) {
+    private func replaceMessages(_ messages: [ChatMessage], for username: String) {
         var deduped: [ChatMessage] = []
         for message in messages {
             guard !deduped.contains(where: { $0.id == message.id }) else { continue }
             deduped.append(message)
         }
-        store[username] = deduped.sorted {
+        let sorted = deduped.sorted {
             if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
             return $0.createdAt < $1.createdAt
         }
+        lock.withLock { store[username] = sorted }
     }
 
     private func ensureSession(for chatUsername: String) throws -> SessionState {
@@ -191,19 +189,19 @@ final class MockChatRepository: ChatRepository {
     }
 
     private func ensureRemoteKeyManager(for username: String) throws -> KeyManager {
-        if let existing = remoteKeyManagers[username] {
+        if let existing = lock.withLock({ remoteKeyManagers[username] }) {
             return existing
         }
 
         let keyManager = KeyManager(service: "veil.keys.remote.\(username)")
         let seed = Data(SHA256.hash(data: Data("veil.remote.\(username)".utf8)))
         try keyManager.bootstrapIdentityIfNeeded(seed: seed)
-        remoteKeyManagers[username] = keyManager
+        lock.withLock { remoteKeyManagers[username] = keyManager }
         return keyManager
     }
 
     private func deterministicThreadId(for username: String) -> UUID {
-        if let existing = threadIdByUsername[username] {
+        if let existing = lock.withLock({ threadIdByUsername[username] }) {
             return existing
         }
 
@@ -219,7 +217,7 @@ final class MockChatRepository: ChatRepository {
         )
 
         let id = UUID(uuidString: uuidString) ?? UUID()
-        threadIdByUsername[username] = id
+        lock.withLock { threadIdByUsername[username] = id }
         return id
     }
 
@@ -289,7 +287,7 @@ final class MockChatRepository: ChatRepository {
 extension MockChatRepository {
     func listChats() -> [ChatThread] {
         // Derive threads from store. Deterministic sort by last message date desc.
-        store
+        lock.withLock { store }
             .compactMap { (username, msgs) -> ChatThread? in
                 guard let last = msgs.max(by: { $0.createdAt < $1.createdAt }) else { return nil }
                 return ChatThread(

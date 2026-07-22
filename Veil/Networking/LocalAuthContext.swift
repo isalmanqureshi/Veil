@@ -1,8 +1,8 @@
 import Foundation
 
 struct LocalAuthContext {
-    private let usernameKey = "veil.currentUser.username"
-    private let sessionSignedInKey = "veil.session.isSignedIn"
+    private let usernameKey = DefaultsKey.username
+    private let sessionSignedInKey = DefaultsKey.isSignedIn
     private let deviceIdentityStore: DeviceIdentityStore
     private let defaults: UserDefaults
 

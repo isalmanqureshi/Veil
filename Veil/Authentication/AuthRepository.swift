@@ -20,7 +20,7 @@ protocol AuthRepository {
 
 final class MockAuthRepository: AuthRepository {
 
-    private let keyUser = "veil.currentUser.username"
+    private let keyUser = DefaultsKey.username
     private let service = "veil.identity"
     private let accountSeed = "identitySeed"
 

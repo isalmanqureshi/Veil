@@ -12,7 +12,7 @@ final class LocalDataWiper: LocalDataWiping {
     private let deviceIdentityStore: DeviceIdentityStore
     private let defaults: UserDefaults
 
-    private let sessionSignedInKey = "veil.session.isSignedIn"
+    private let sessionSignedInKey = DefaultsKey.isSignedIn
     private let currentDeviceIdKey = "veil.currentDevice.id"
 
     init(
