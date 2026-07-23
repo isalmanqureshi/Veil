@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-enum MessageTimer: String, CaseIterable, Identifiable {
+enum MessageTimer: String, Codable, CaseIterable, Identifiable {
     case seconds30 = "30 sec"
     case minutes5 = "5 min"
     case hour1 = "1 hr"

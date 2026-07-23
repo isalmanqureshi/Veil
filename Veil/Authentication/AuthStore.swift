@@ -32,7 +32,7 @@ final class AuthStore: ObservableObject {
     private let deviceIdentityStore: DeviceIdentityStore
     private let localDataWiper: LocalDataWiping
     private let defaults: UserDefaults
-    private let sessionKey = "veil.session.isSignedIn"
+    private let sessionKey = DefaultsKey.isSignedIn
     private var backendSyncTask: Task<Void, Never>?
 
     init(

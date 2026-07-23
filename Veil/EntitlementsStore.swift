@@ -99,9 +99,12 @@ final class EntitlementsStore: ObservableObject, EntitlementsProviding {
     }
 
     private func observeTransactions() {
-        transactionObserverTask = Task { [purchaseProvider] in
+        // `[weak self]` breaks the retain cycle: the observed transaction stream
+        // may never terminate, so a strong capture would keep `self` alive
+        // forever and `deinit` (which cancels this task) would never run.
+        transactionObserverTask = Task { [weak self, purchaseProvider] in
             for await _ in purchaseProvider.observeTransactions() {
-                await self.refresh()
+                await self?.refresh()
             }
         }
     }

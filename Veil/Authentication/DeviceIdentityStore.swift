@@ -11,7 +11,7 @@ struct DeviceIdentityStore {
     }
 
     func currentDeviceId() -> String {
-        if let existing = try? keychain.loadString(service: service, account: deviceIdKey), let existing, !existing.isEmpty {
+        if let existing = try? keychain.loadString(service: service, account: deviceIdKey), !existing.isEmpty {
             return existing
         }
 

@@ -241,7 +241,7 @@ final class PushTokenStore {
     }
 
     func hasTokenChanged(_ tokenData: Data) -> Bool {
-        guard let existing = try? keychain.load(service: service, account: tokenKey), let existing else { return true }
+        guard let existing = try? keychain.load(service: service, account: tokenKey) else { return true }
         return existing != tokenData
     }
 
